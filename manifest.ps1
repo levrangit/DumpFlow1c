@@ -5,27 +5,27 @@
 
 .DESCRIPTION
     Собирает сведения о всех файлах каталога и сохраняет их в JSON.
-    По умолчанию SHA-256 не вычисляется. Для проверки влияния хэширования
-    используйте параметр -WithHash.
-
-    Скрипт совместим с Windows PowerShell 5.1.
+    По умолчанию хэши не вычисляются.
+    Параметр -WithMD5 вычисляет MD5.
+    Параметр -WithHash вычисляет SHA-256.
 
 .PARAMETER Path
     Каталог, для которого создаётся манифест.
 
 .PARAMETER OutputPath
     Полный путь к JSON-файлу манифеста.
-    Если не указан, файл создаётся рядом с каталогом:
-    <имя_каталога>_manifest_<yyyy-MM-dd_HHmmss>.json
+
+.PARAMETER WithMD5
+    Вычислять MD5 для каждого файла.
 
 .PARAMETER WithHash
     Вычислять SHA-256 для каждого файла.
 
 .EXAMPLE
-    .\manifest.ps1 -Path 'F:\Users\LatypovRR\MCP\akk_do_dump'
+    .\manifest.ps1 -Path 'F:\Users\LatypovRR\MCP\dump\AKK\DO_AKK' -OutputPath 'F:\Users\LatypovRR\MCP\dump\AKK\DO_AKK\manifest-md5.json' -WithMD5
 
 .EXAMPLE
-    .\manifest.ps1 -Path 'F:\Users\LatypovRR\MCP\akk_do_dump' -WithHash
+    .\manifest.ps1 -Path 'F:\Users\LatypovRR\MCP\dump\AKK\DO_AKK' -OutputPath 'F:\Users\LatypovRR\MCP\dump\AKK\DO_AKK\manifest-sha256.json' -WithHash
 #>
 
 [CmdletBinding()]
@@ -36,6 +36,9 @@ param(
 
     [Parameter(Mandatory = $false)]
     [string]$OutputPath,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$WithMD5,
 
     [Parameter(Mandatory = $false)]
     [switch]$WithHash
@@ -52,8 +55,14 @@ Write-Host 'DumpFlow1c manifest'
 Write-Host '============================================================'
 Write-Host ('Старт:      {0}' -f $scriptStart.ToString('yyyy-MM-dd HH:mm:ss.fff'))
 Write-Host ('Каталог:    {0}' -f $Path)
+Write-Host ('MD5:        {0}' -f $(if ($WithMD5) { 'ДА' } else { 'НЕТ' }))
 Write-Host ('SHA-256:    {0}' -f $(if ($WithHash) { 'ДА' } else { 'НЕТ' }))
 Write-Host ''
+
+if ($WithMD5 -and $WithHash) {
+    Write-Host 'ОШИБКА: одновременно указывать -WithMD5 и -WithHash нельзя.'
+    exit 1
+}
 
 try {
     $resolvedPath = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).Path
@@ -102,6 +111,10 @@ try {
             LastWriteTime = $file.LastWriteTime.ToString('o')
         }
 
+        if ($WithMD5) {
+            $record['MD5'] = (Get-FileHash -LiteralPath $file.FullName -Algorithm MD5 -ErrorAction Stop).Hash
+        }
+
         if ($WithHash) {
             $record['SHA256'] = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256 -ErrorAction Stop).Hash
         }
@@ -134,13 +147,21 @@ try {
     $scriptEnd = Get-Date
     $duration = $scriptEnd - $scriptStart
 
+    $hashAlgorithm = $null
+    if ($WithMD5) {
+        $hashAlgorithm = 'MD5'
+    }
+    elseif ($WithHash) {
+        $hashAlgorithm = 'SHA256'
+    }
+
     $manifest = [ordered]@{
         ManifestVersion = 1
         CreatedAt       = $scriptStart.ToString('o')
         CompletedAt     = $scriptEnd.ToString('o')
         DurationSeconds = [Math]::Round($duration.TotalSeconds, 3)
         SourcePath      = $resolvedPath
-        HashAlgorithm   = $(if ($WithHash) { 'SHA256' } else { $null })
+        HashAlgorithm   = $hashAlgorithm
         FileCount       = $totalFiles
         TotalSize       = $totalBytes
         Files           = $fileRecords
@@ -164,6 +185,7 @@ try {
     Write-Host '============================================================'
     Write-Host ('Файлов:     {0:N0}' -f $totalFiles)
     Write-Host ('Размер:     {0:N0} байт' -f $totalBytes)
+    Write-Host ('MD5:        {0}' -f $(if ($WithMD5) { 'ДА' } else { 'НЕТ' }))
     Write-Host ('SHA-256:    {0}' -f $(if ($WithHash) { 'ДА' } else { 'НЕТ' }))
     Write-Host ('Манифест:   {0}' -f $OutputPath)
     Write-Host ('Окончание:  {0}' -f $scriptEnd.ToString('yyyy-MM-dd HH:mm:ss.fff'))
