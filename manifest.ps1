@@ -1,90 +1,175 @@
-﻿# DumpFlow1c: версия файла — 2026-09-30 22:00
+﻿# DumpFlow1c: версия файла — 2026-09-30 23:56
 #Requires -Version 5.1
-<#
-Создаёт полный manifest постоянного dump-каталога.
-MD5 используется как быстрый идентификатор содержимого файлов.
-#>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)]
-    [string]$Path,
-
-    [Parameter(Mandatory = $true)]
-    [string]$ProjectName,
-
-    [Parameter(Mandatory = $true)]
-    [string]$DatabaseName,
-
     [Parameter(Mandatory = $false)]
-    [string]$SnapshotId = (Get-Date).ToString('yyyyMMdd_HHmmss'),
-
-    [Parameter(Mandatory = $true)]
-    [string]$OutputPath,
-
-    [switch]$WithMD5
+    [string]$DatabaseName
 )
 
 $ErrorActionPreference = 'Stop'
+$root = $PSScriptRoot
+$configDir = Join-Path $root 'config'
 
-if (-not $WithMD5) {
-    throw 'Для транспортного manifest необходимо указать -WithMD5.'
+$computer = $env:COMPUTERNAME
+$terminalPath = Join-Path (Join-Path $configDir 'terminals') ($computer + '.json')
+if (-not (Test-Path -LiteralPath $terminalPath -PathType Leaf)) {
+    throw "Не найден файл терминала: $terminalPath"
 }
-if ($ProjectName -notmatch '^[A-Za-z0-9][A-Za-z0-9_-]*$') { throw "Некорректный ProjectName: $ProjectName" }
-if ($DatabaseName -notmatch '^[A-Za-z0-9][A-Za-z0-9_-]*$') { throw "Некорректный DatabaseName: $DatabaseName" }
 
-$started = Get-Date
-$resolvedPath = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).Path
-if (-not (Test-Path -LiteralPath $resolvedPath -PathType Container)) { throw "Не каталог: $resolvedPath" }
+$terminal = Get-Content -Raw -LiteralPath $terminalPath -Encoding UTF8 | ConvertFrom-Json
+if ([string]$terminal.computer_name -ne $computer) {
+    throw 'computer_name в terminal JSON не совпадает с COMPUTERNAME.'
+}
 
-$files = @(Get-ChildItem -LiteralPath $resolvedPath -Recurse -File -Force -ErrorAction Stop | Sort-Object FullName)
-if ($files.Count -eq 0) { throw "Dump пуст: $resolvedPath" }
+$projectName = [string]$terminal.project_name
+$mcpWork = [string]$terminal.mcp_work
 
-$fileRecords = New-Object System.Collections.Generic.List[object]
-$totalBytes = [int64]0
-$index = 0
+if ([string]::IsNullOrWhiteSpace($projectName)) {
+    throw 'В terminal JSON не задан project_name.'
+}
+if ($projectName -notmatch '^[A-Za-z0-9][A-Za-z0-9_-]*$') {
+    throw "Некорректный project_name: $projectName"
+}
+if ([string]::IsNullOrWhiteSpace($mcpWork)) {
+    throw 'В terminal JSON не задан mcp_work.'
+}
+if (-not (Test-Path -LiteralPath $mcpWork -PathType Container)) {
+    throw "Рабочий каталог не найден: $mcpWork"
+}
 
-foreach ($file in $files) {
-    $index++
-    $relative = $file.FullName.Substring($resolvedPath.Length).TrimStart('\','/')
-    $relative = $relative -replace '\','/'
+$dbDir = Join-Path (Join-Path $configDir 'databases') $computer
+if (-not (Test-Path -LiteralPath $dbDir -PathType Container)) {
+    throw "Не найден каталог баз: $dbDir"
+}
 
-    $record = [ordered]@{
-        RelativePath = $relative
-        SizeBytes    = [int64]$file.Length
-        MD5          = (Get-FileHash -LiteralPath $file.FullName -Algorithm MD5 -ErrorAction Stop).Hash.ToUpperInvariant()
+if ([string]::IsNullOrWhiteSpace($DatabaseName)) {
+    $dbFiles = @(Get-ChildItem -LiteralPath $dbDir -Filter '*.json' -File | Sort-Object Name)
+}
+else {
+    if ($DatabaseName -notmatch '^[A-Za-z0-9][A-Za-z0-9_-]*$') {
+        throw "Некорректный DatabaseName: $DatabaseName"
     }
-    $fileRecords.Add([PSCustomObject]$record)
-    $totalBytes += [int64]$file.Length
 
-    if (($index -eq 1) -or ($index -eq $files.Count) -or (($index % 100) -eq 0)) {
-        Write-Progress -Activity 'Формирование manifest' -Status "$index/$($files.Count)" -PercentComplete ([int](($index * 100.0) / $files.Count))
+    $dbFile = Join-Path $dbDir ($DatabaseName + '.json')
+    if (-not (Test-Path -LiteralPath $dbFile -PathType Leaf)) {
+        throw "Не найдена конфигурация базы: $dbFile"
     }
-}
-Write-Progress -Activity 'Формирование manifest' -Completed
 
-$completed = Get-Date
-$manifest = [ordered]@{
-    ManifestVersion = 1
-    Project         = $ProjectName
-    Database        = $DatabaseName
-    SnapshotId      = $SnapshotId
-    CreatedAt       = $started.ToString('o')
-    CompletedAt     = $completed.ToString('o')
-    HashAlgorithm   = 'MD5'
-    DumpPath        = "dump/$ProjectName/$DatabaseName"
-    FileCount       = $files.Count
-    TotalSizeBytes  = $totalBytes
-    Files           = $fileRecords
+    $dbFiles = @(Get-Item -LiteralPath $dbFile)
 }
 
-$outputDirectory = Split-Path -Parent $OutputPath
-New-Item -ItemType Directory -Force -Path $outputDirectory | Out-Null
-$manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $OutputPath -Encoding UTF8
+if ($dbFiles.Count -eq 0) {
+    throw "В каталоге нет JSON баз: $dbDir"
+}
 
-Write-Host "MANIFEST: $OutputPath"
-Write-Host "Проект: $ProjectName"
-Write-Host "База: $DatabaseName"
-Write-Host "SnapshotId: $SnapshotId"
-Write-Host ("Файлов: {0:N0}" -f $files.Count)
-Write-Host ("Размер: {0:N0} байт" -f $totalBytes)
+$snapshotId = (Get-Date).ToString('yyyyMMdd_HHmmss')
+$dumpRoot = Join-Path (Join-Path $mcpWork 'dump') $projectName
+$metadataRoot = Join-Path (Join-Path $mcpWork 'metadata') $projectName
+
+New-Item -ItemType Directory -Force -Path $metadataRoot | Out-Null
+
+function New-Manifest {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$DatabaseName,
+
+        [Parameter(Mandatory = $true)]
+        [string]$DumpPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$OutputPath
+    )
+
+    if (-not (Test-Path -LiteralPath $DumpPath -PathType Container)) {
+        throw "Не найден dump базы: $DumpPath"
+    }
+
+    $files = @(Get-ChildItem -LiteralPath $DumpPath -Recurse -File -Force -ErrorAction Stop | Sort-Object FullName)
+    if ($files.Count -eq 0) {
+        throw "Dump пуст: $DumpPath"
+    }
+
+    $started = Get-Date
+    $fileRecords = New-Object System.Collections.Generic.List[object]
+    $totalBytes = [int64]0
+    $index = 0
+
+    foreach ($file in $files) {
+        $index++
+        $relative = $file.FullName.Substring($DumpPath.Length).TrimStart('\','/')
+        $relative = $relative -replace '\','/'
+
+        $record = [ordered]@{
+            RelativePath = $relative
+            SizeBytes    = [int64]$file.Length
+            MD5          = (Get-FileHash -LiteralPath $file.FullName -Algorithm MD5 -ErrorAction Stop).Hash.ToUpperInvariant()
+        }
+
+        $fileRecords.Add([PSCustomObject]$record)
+        $totalBytes += [int64]$file.Length
+
+        if (($index -eq 1) -or ($index -eq $files.Count) -or (($index % 100) -eq 0)) {
+            Write-Progress -Activity "Формирование manifest: $DatabaseName" -Status "$index/$($files.Count)" -PercentComplete ([int](($index * 100.0) / $files.Count))
+        }
+    }
+
+    Write-Progress -Activity "Формирование manifest: $DatabaseName" -Completed
+
+    $completed = Get-Date
+    $manifest = [ordered]@{
+        ManifestVersion = 1
+        Project         = $projectName
+        Database        = $DatabaseName
+        SnapshotId      = $snapshotId
+        CreatedAt       = $started.ToString('o')
+        CompletedAt     = $completed.ToString('o')
+        HashAlgorithm   = 'MD5'
+        DumpPath        = "dump/$projectName/$DatabaseName"
+        FileCount       = $files.Count
+        TotalSizeBytes  = $totalBytes
+        Files           = $fileRecords
+    }
+
+    $outputDirectory = Split-Path -Parent $OutputPath
+    New-Item -ItemType Directory -Force -Path $outputDirectory | Out-Null
+    $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $OutputPath -Encoding UTF8
+
+    Write-Host "MANIFEST: $OutputPath"
+    Write-Host "Проект: $projectName"
+    Write-Host "База: $DatabaseName"
+    Write-Host "SnapshotId: $snapshotId"
+    Write-Host ("Файлов: {0:N0}" -f $files.Count)
+    Write-Host ("Размер: {0:N0} байт" -f $totalBytes)
+}
+
+Write-Host '------------------------------------------------------------'
+Write-Host 'MCP - MANIFEST'
+Write-Host '------------------------------------------------------------'
+Write-Host "Компьютер: $computer"
+Write-Host "Проект: $projectName"
+Write-Host "Рабочий каталог: $mcpWork"
+Write-Host "SnapshotId: $snapshotId"
+Write-Host ("Баз к обработке: {0:N0}" -f $dbFiles.Count)
+Write-Host ''
+
+foreach ($dbFile in $dbFiles) {
+    $db = Get-Content -Raw -LiteralPath $dbFile.FullName -Encoding UTF8 | ConvertFrom-Json
+    $id = [string]$db.db_source_id
+
+    if ([string]::IsNullOrWhiteSpace($id)) {
+        throw "В JSON не задан db_source_id: $($dbFile.FullName)"
+    }
+    if ($id -notmatch '^[A-Za-z0-9][A-Za-z0-9_-]*$') {
+        throw "Некорректный DB_SOURCE_ID: $id"
+    }
+
+    $dumpPath = Join-Path $dumpRoot $id
+    $metadataDir = Join-Path $metadataRoot $id
+    $manifestPath = Join-Path $metadataDir ("manifest_{0}_{1}.json" -f $id,$snapshotId)
+
+    New-Manifest -DatabaseName $id -DumpPath $dumpPath -OutputPath $manifestPath
+}
+
+Write-Host ''
+Write-Host 'MANIFEST завершён успешно.'
 exit 0
