@@ -1,371 +1,246 @@
-# MCP-дамп 1С — архитектура
+# DumpFlow1c — архитектура передачи 1С dump с терминала на RDP-клиент
 
-Дата фиксации: 2026-09-26
+Дата фиксации: 2026-09-30
 
 ## Назначение
 
-Система на удалённом Windows RDP-терминале одной командой:
+DumpFlow1c формирует на Windows-терминале постоянный dump 1С, определяет изменения между текущим состоянием и последней успешно доставленной версией, упаковывает только изменившиеся файлы и передаёт на RDP-клиент транспортный комплект:
 
-`update.ps1`
+- .7z;
+- .7z.sha256;
+- manifest_*.json;
+- changes_*.json.
 
-определяет терминал и настроенные базы, выгружает конфигурацию 1С и расширения, создаёт архивы 7z с SHA-256 и передаёт **только готовые архивные файлы** через RDP-диск в каталог MCP на локальном компьютере.
-
-Передача архивов с локального компьютера на `leoVM` относится к отдельному следующему этапу и в эту схему не входит.
+Этап RDP-клиент → Ubuntu/leoVM в эту схему пока не входит.
 
 ## Главная схема
 
-```
+~~~
 update.ps1
     │
     ├── prepare.ps1
-    │
     ├── dump_config.ps1
-    │       │
-    │       └── dump/<DB_SOURCE_ID>/
-    │             ├── config/
-    │             └── extensions/
-    │
+    ├── manifest.ps1
+    ├── compare_manifests.ps1
     ├── pack.ps1
-    │       │
-    │       └── archive/
-    │             ├── <DB_SOURCE_ID>_<timestamp>.7z
-    │             └── <DB_SOURCE_ID>_<timestamp>.sha256
-    │
     └── upload.ps1
-            │
-            └── rclone
-                 │
-                 ▼
-      \\\\tsclient\\L\\!work\\RAU_IT\\MCP\\archive\\
-```
+~~~
 
-На этом текущий Windows-процесс заканчивается.
+## Проект
 
-## Главное архитектурное правило
+Имя проекта является настройкой common.json:
 
-**JSON — источник конфигурации. PowerShell-скрипты выполняют действия и не содержат настроек окружения.**
-
-Не хардкодить в скриптах:
-
-- путь MCP;
-- имя терминала;
-- `mcp_work`;
-- путь к `1cv8.exe`;
-- сервер 1С;
-- имя базы;
-- пользователя и пароль;
-- имена расширений.
-
-## Конфигурация
-
-`config/common.json`:
-
-```json
+~~~json
 {
+    "project_name": "AKK",
     "rdp_drive": "\\\\tsclient\\L",
     "mcp_path": "!work\\RAU_IT\\MCP"
 }
-```
+~~~
 
-Результирующий MCP-каталог на RDP-диске:
+Настройка выполняется через setup.ps1. prepare.ps1 обязательно проверяет project_name.
 
-```
-\\tsclient\L\!work\RAU_IT\MCP
-```
+Проект является частью пути dump и metadata:
 
-Текущий терминал определяется через `COMPUTERNAME` и загружается из:
-
-```
-config/terminals/<COMPUTERNAME>.json
-```
-
-В нём задаются:
-
-- `computer_name`;
-- `username`;
-- `mcp_work`;
-- `onec_bin`.
-
-Базы задаются отдельными JSON-файлами:
-
-```
-config/databases/<COMPUTERNAME>/*.json
-```
-
-Количество баз отдельной настройкой не задаётся.
-
-## Рабочий каталог
-
-На удалённом Windows-терминале:
-
-```
+~~~
 <mcp_work>/
 ├── dump/
+│   └── AKK/
+│       ├── DO_AKK/
+│       │   ├── config/
+│       │   └── extensions/
+│       └── ERP_AKK/
+├── metadata/
+│   └── AKK/
+│       ├── DO_AKK/
+│       └── ERP_AKK/
 ├── archive/
-├── logs/
-└── tools/
-    └── 7za.exe
-```
+└── logs/
+~~~
 
-`7za.exe` копируется из:
+## Постоянный dump
 
-```
-src/tools/7za.exe
-```
+Каталог:
 
-в локальный рабочий каталог:
+~~~
+dump/<PROJECT>/<DB_SOURCE_ID>/
+~~~
 
-```
-<mcp_work>\tools\7za.exe
-```
+не заменяется staging-каталогом при каждом запуске.
 
-Локальная копия `7za.exe` **не удаляется** после завершения упаковки.
+dump_config.ps1 выгружает 1С непосредственно в постоянные:
 
-## Этап 1 — prepare.ps1
+~~~
+dump/<PROJECT>/<DB>/config/
+dump/<PROJECT>/<DB>/extensions/<EXTENSION>/
+~~~
 
-Проверяет:
+Это сделано для сохранения состояния ConfigDumpInfo.xml и возможности использовать механизм инкрементальной выгрузки 1С.
 
-- `common.json`;
-- RDP-диск;
-- каталог MCP на RDP-диске;
-- terminal JSON;
-- `mcp_work`;
-- `1cv8.exe`;
-- `rclone.exe`;
-- `7za.exe`;
-- конфигурации баз;
-- глобальную уникальность `DB_SOURCE_ID`.
+## Metadata
 
-Создаёт:
+Для каждой базы:
 
-```
-<mcp_work>\dump
-<mcp_work>\archive
-<mcp_work>\logs
-```
+~~~
+metadata/<PROJECT>/<DB>/
+├── manifest_<DB>_<snapshot>.json
+├── changes_<DB>_<snapshot>.json
+└── state.json
+~~~
 
-Также подготавливает каталоги dump для настроенных баз и расширений.
+История manifest/changes сохраняется. Подкаталоги версий не используются.
 
-Само архивирование и передачу не выполняет.
+## Manifest
 
-## Этап 2 — dump_config.ps1
+manifest_<DB>_<snapshot>.json — полный снимок текущего dump.
 
-Для каждой настроенной базы:
+В Files используется только RelativePath. Абсолютные Windows-пути в manifest не записываются.
 
-1. читает database JSON;
-2. формирует staging-каталог `dump/<DB_SOURCE_ID>.__new`;
-3. выгружает основную конфигурацию через `1cv8.exe DESIGNER /DumpConfigToFiles`;
-4. выгружает указанные расширения;
-5. ожидает стабилизации результатов выгрузки;
-6. удаляет старый `dump/<DB_SOURCE_ID>`;
-7. переименовывает staging в окончательный каталог.
+~~~json
+{
+    "ManifestVersion": 1,
+    "Project": "AKK",
+    "Database": "DO_AKK",
+    "SnapshotId": "20260930_180000",
+    "HashAlgorithm": "MD5",
+    "DumpPath": "dump/AKK/DO_AKK",
+    "FileCount": 4,
+    "TotalSizeBytes": 48128,
+    "Files": [
+        {
+            "RelativePath": "config/Documents/Заказ.xml",
+            "SizeBytes": 15320,
+            "MD5": "A1B2..."
+        }
+    ]
+}
+~~~
 
-Результат:
+## Changes
 
-```
-dump/
-└── DO_AKK/
-    ├── config/
-    └── extensions/
-        └── РАУ/
-```
+changes_<DB>_<snapshot>.json — delta между текущим manifest и последним успешно доставленным manifest.
 
-и аналогично для остальных баз.
+Возможные действия:
 
-Важно: `dump_config.ps1` работает с исходными файлами 1С локально на Windows-терминале. Эти многочисленные файлы **не передаются через rclone**.
+- ADDED;
+- MODIFIED;
+- DELETED.
 
-## Этап 3 — pack.ps1
+UNCHANGED в массив Files не записывается, только учитывается в UnchangedCount.
 
-После полного завершения dump архивирует каждую базу.
+Правила упаковки:
 
-Для базы:
+~~~
+ADDED     -> входит в 7z
+MODIFIED  -> входит в 7z
+DELETED   -> в 7z не входит
+~~~
 
-```
-dump/<DB_SOURCE_ID>/
-```
+На первом запуске state.json отсутствует, поэтому все файлы считаются ADDED.
 
-создаётся:
+## State
 
-```
-archive/<DB_SOURCE_ID>_<YYYYMMDD>_<HHMMSS>.7z
-archive/<DB_SOURCE_ID>_<YYYYMMDD>_<HHMMSS>.sha256
-```
+state.json хранит только указатель на последнюю успешно доставленную версию:
 
-Используется локальный:
+~~~json
+{
+    "Version": 1,
+    "Project": "AKK",
+    "Database": "DO_AKK",
+    "LastSuccessfulSnapshotId": "20260930_180000",
+    "LastSuccessfulManifest": "manifest_DO_AKK_20260930_180000.json",
+    "LastSuccessfulChanges": "changes_DO_AKK_20260930_180000.json",
+    "LastSuccessfulAt": "2026-09-30T18:02:41+05:00"
+}
+~~~
 
-```
-<mcp_work>\tools\7za.exe
-```
+state.json обновляется только после проверки файлов на RDP-диске самим upload.ps1.
 
-Параметры упаковки:
+## Архив
 
-- формат 7z;
-- уровень сжатия `-mx=5`;
-- многопоточная упаковка `-mmt=on`;
-- прогресс 7-Zip через `-bsp1`.
+pack.ps1 читает последний changes_*.json каждой базы.
 
-### Информация в консоли
+Для ADDED и MODIFIED создаётся временный список относительных путей, после чего portable 7za.exe создаёт:
 
-Для каждой базы показываются:
+~~~
+archive/<DB>_<snapshot>.7z
+archive/<DB>_<snapshot>.7z.sha256
+~~~
 
-- время начала;
-- источник;
-- количество файлов;
-- исходный размер;
-- имя архива;
-- текущий процент выполнения;
-- прошедшее время;
-- оценочное оставшееся время;
-- время окончания;
-- фактическое время упаковки;
-- размер готового архива;
-- отношение размера архива к исходному;
-- SHA-256;
-- путь к файлу контрольной суммы.
+В архиве сохраняются относительные пути относительно dump/<PROJECT>/<DB>/.
 
-ETA является оценкой по текущему проценту выполнения 7-Zip.
+В archive/ также копируются соответствующие manifest и changes. Таким образом archive содержит готовый транспортный комплект версии.
 
-## Этап 4 — upload.ps1
+## Control upload
 
-`upload.ps1` **не работает с каталогом `dump`**.
+Старое имя control заменено на control_upload.
 
-Он читает только:
+На RDP-клиенте:
 
-```
-<mcp_work>\archive
-```
+~~~
+MCP/
+├── archive/
+└── control_upload/
+    └── control_upload.json
+~~~
 
-и передаёт через `rclone` только:
+upload.ps1 создаёт control_upload.json до передачи.
 
-```
-*.7z
-*.sha256
-```
+Он содержит ожидаемый комплект для каждой базы: Manifest, Changes, Archive и ArchiveChecksum.
 
-Назначение:
+control_upload.ps1 на RDP-клиенте показывает состояние каждого из четырёх файлов и проверяет наличие, размер, SHA-256 архива и MD5 manifest/changes.
 
-```
-\\tsclient\L\!work\RAU_IT\MCP\archive\
-```
+## Upload
 
-Используется один поток передачи:
+upload.ps1 передаёт ровно четыре файла на каждую версию:
 
-```
---transfers 1
-```
+~~~
+<DB>_<snapshot>.7z
+<DB>_<snapshot>.7z.sha256
+manifest_<DB>_<snapshot>.json
+changes_<DB>_<snapshot>.json
+~~~
 
-и встроенный прогресс rclone:
+Передача выполняется через rclone copyto.
 
-```
---progress --stats 5s
-```
+После передачи upload.ps1 дополнительно проверяет файлы непосредственно через RDP mapped drive. Только после успешной проверки он обновляет state.json.
 
-Таким образом, через RDP передаются несколько больших архивных файлов вместо огромного количества маленьких файлов 1С.
+## Граница системы
 
-### Важное правило
-
-`upload.ps1` не должен:
-
-- передавать `dump/<DB_SOURCE_ID>/config`;
-- передавать `dump/<DB_SOURCE_ID>/extensions`;
-- распаковывать архивы;
-- подключаться к Ubuntu;
-- подключаться к `leoVM`;
-- выполнять SSH/SCP;
-- менять содержимое `MCP_clean`.
-
-Все действия после появления архивов в:
-
-```
-\\tsclient\L\!work\RAU_IT\MCP\archive\
-```
-
-являются отдельным этапом.
-
-## Порядок update.ps1
-
-Текущий порядок:
-
-```
-update.ps1
-    │
-    ├── prepare.ps1
-    │
-    ├── dump_config.ps1
-    │
-    ├── pack.ps1
-    │
-    └── upload.ps1
-```
-
-Каждый следующий этап запускается только после успешного завершения предыдущего.
-
-## Формат архивов
-
-Пример:
-
-```
-archive/
-├── DO_AKK_20260926_230501.7z
-├── DO_AKK_20260926_230501.sha256
-├── ERP_AKK_20260926_231842.7z
-└── ERP_AKK_20260926_231842.sha256
-```
-
-Имя содержит:
-
-- `DB_SOURCE_ID`;
-- дату;
-- время создания архива.
-
-UUID не используется.
-
-Старые архивы автоматически не удаляются.
-
-## Инструменты
-
-```
-tools\rclone.exe
-tools\7za.exe
-```
-
-Оба инструмента portable.
-
-`rclone.exe` используется только для передачи готовых архивных файлов.
-
-`7za.exe` используется для локальной упаковки dump.
-
-## Граница текущей системы
-
-Текущая система отвечает за:
-
-```
+~~~
 1С
  ↓
-dump
+permanent dump
  ↓
-7z
+manifest
+ ↓
+changes
+ ↓
+7z delta
  ↓
 SHA-256
  ↓
+control_upload
+ ↓
 rclone
  ↓
-RDP MCP\archive
-```
+RDP MCP/archive
+~~~
 
-Следующий процесс, который забирает архивы из `MCP\archive` и передаёт их на Ubuntu/`leoVM`, проектируется отдельно.
+RDP → Ubuntu/leoVM пока не реализуется.
 
-## Зафиксированные решения
+## Файлы проекта
 
-1. Архивирование 7z является обязательным этапом `update.ps1`.
-2. `dump_config.ps1` сначала полностью формирует локальный dump.
-3. `pack.ps1` работает после завершения dump.
-4. Архив создаётся локально на Windows-терминале.
-5. Для упаковки используется локальная копия portable `7za.exe`.
-6. Локальная копия `7za.exe` не удаляется.
-7. Для каждого архива создаётся SHA-256.
-8. `upload.ps1` передаёт только `.7z` и `.sha256`.
-9. Исходные каталоги `dump` через rclone не передаются.
-10. `upload.ps1` заканчивает работу после передачи файлов на RDP-диск.
-11. Передача архивов на `leoVM` является отдельным будущим этапом.
-12. Распаковка и обновление MCP на `leoVM` в текущую Windows-схему не входят.
+~~~
+prepare.ps1
+dump_config.ps1
+manifest.ps1
+compare_manifests.ps1
+pack.ps1
+upload.ps1
+control_upload.ps1
+update.ps1
+setup.ps1
+~~~
+
+control.ps1 больше не используется.
