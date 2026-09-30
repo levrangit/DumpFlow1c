@@ -109,9 +109,6 @@ if ([string]$terminal.computer_name -ne $computerName) { throw 'computer_name в
 $projectName = [string]$terminal.project_name
 if ([string]::IsNullOrWhiteSpace($projectName)) { throw 'В terminal JSON не задан project_name.' }
 
-$computerName = $env:COMPUTERNAME
-$terminalPath = Join-Path $root ("config\terminals\{0}.json" -f $computerName)
-$terminal = Read-JsonFile $terminalPath
 $mcpWork = [string]$terminal.mcp_work
 $onecBin = [string]$terminal.onec_bin
 
