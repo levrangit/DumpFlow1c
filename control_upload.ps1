@@ -37,6 +37,79 @@ function Get-Sha256([string]$Path) {
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToUpperInvariant()
 }
 
+function Test-ShaSidecar([string]$ShaPath,[string]$ArchiveName,[string]$ExpectedHash) {
+    if (-not (Test-Path -LiteralPath $ShaPath -PathType Leaf)) { return $false }
+    $line = @(Get-Content -LiteralPath $ShaPath -Encoding ASCII | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -First 1)
+    if ($line.Count -eq 0) { return $false }
+    $actual = ([string]$line[0]).Trim() -replace '^([0-9A-Fa-f]{64})\s+.*Write-Host '------------------------------------------------------------'
+Write-Host 'MCP - CONTROL_UPLOAD'
+Write-Host '------------------------------------------------------------'
+Write-Host "Проект: $($control.Project)"
+Write-Host "Источник: $($control.SourceComputer)"
+Write-Host "Control: $controlPath"
+Write-Host ''
+
+$start = Get-Date
+while ($true) {
+    $allComplete = $true
+    $totalBytes = [int64]0
+    $receivedBytes = [int64]0
+    $completeFiles = 0
+    $totalFiles = $expected.Count * 4
+
+    foreach ($item in $expected) {
+        $database = [string]$item.Database
+        $snapshot = [string]$item.SnapshotId
+        Write-Host ("[{0}] {1} / {2}" -f (Get-Date -Format 'HH:mm:ss'),$database,$snapshot)
+
+        $checks = @(
+            [PSCustomObject]@{ Label='7z'; Path=(Join-Path $archiveDir $item.Archive.Name); Size=[int64]$item.Archive.SizeBytes; Kind='SHA256'; Hash=[string]$item.Archive.SHA256 },
+            [PSCustomObject]@{ Label='SHA256'; Path=(Join-Path $archiveDir $item.ArchiveChecksum.Name); Size=[int64]$item.ArchiveChecksum.SizeBytes; Kind='NONE'; Hash='' },
+            [PSCustomObject]@{ Label='manifest'; Path=(Join-Path $archiveDir $item.Manifest.Name); Size=[int64]$item.Manifest.SizeBytes; Kind='MD5'; Hash=[string]$item.Manifest.MD5 },
+            [PSCustomObject]@{ Label='changes'; Path=(Join-Path $archiveDir $item.Changes.Name); Size=[int64]$item.Changes.SizeBytes; Kind='MD5'; Hash=[string]$item.Changes.MD5 }
+        )
+
+        foreach ($check in $checks) {
+            $totalBytes += $check.Size
+            if (Test-File $check.Path $check.Size) {
+                $receivedBytes += $check.Size
+                $completeFiles++
+                $valid = $true
+                if ($check.Kind -eq 'SHA256') { $valid = ((Get-Sha256 $check.Path) -eq $check.Hash) }
+                elseif ($check.Kind -eq 'MD5') { $valid = ((Get-Md5 $check.Path) -eq $check.Hash) }
+                elseif ($check.Label -eq 'SHA256') {
+                    $valid = Test-ShaSidecar $check.Path ([string]$item.Archive.Name) ([string]$item.Archive.SHA256)
+                }
+                $mark = if ($valid) { 'OK' } else { 'HASH ERROR' }
+                Write-Host ("  {0,-8} {1,-10} {2}" -f $check.Label,$mark,$check.Path)
+                if (-not $valid) { $allComplete = $false }
+            }
+            else {
+                Write-Host ("  {0,-8} {1}" -f $check.Label,'ожидание...')
+                $allComplete = $false
+            }
+        }
+    }
+
+    $percent = if ($totalBytes -gt 0) { 100.0 * $receivedBytes / $totalBytes } else { 100.0 }
+    Write-Host ''
+    Write-Host ("Прогресс: {0:N2}% | Файлов: {1}/{2} | Размер: {3}/{4}" -f $percent,$completeFiles,$totalFiles,(Format-Bytes $receivedBytes),(Format-Bytes $totalBytes))
+
+    if ($allComplete) {
+        Write-Host ''
+        Write-Host '============================================================'
+        Write-Host 'CONTROL_UPLOAD: ПЕРЕДАЧА ЗАВЕРШЕНА УСПЕШНО'
+        Write-Host '============================================================'
+        Write-Host ("Время: {0}" -f ((Get-Date) - $start))
+        exit 0
+    }
+
+    Start-Sleep -Seconds 2
+}
+, '$1'
+    return $actual.Equals($ExpectedHash, [StringComparison]::OrdinalIgnoreCase)
+}
+
 Write-Host '------------------------------------------------------------'
 Write-Host 'MCP - CONTROL_UPLOAD'
 Write-Host '------------------------------------------------------------'
