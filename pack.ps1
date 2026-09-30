@@ -1,4 +1,4 @@
-﻿# DumpFlow1c: версия файла — 2026-10-01 01:40
+﻿# DumpFlow1c: версия файла — 2026-10-01 01:45
 #Requires -Version 5.1
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -59,20 +59,26 @@ function Get-ArchiveForDatabase {
     }
 
     try {
+        $sevenZipStdout = Join-Path $archiveDir ('.7za_stdout_' + [guid]::NewGuid().ToString('N') + '.tmp')
+        $sevenZipStderr = Join-Path $archiveDir ('.7za_stderr_' + [guid]::NewGuid().ToString('N') + '.tmp')
+
         if ($transferFiles.Count -gt 0) {
             $lines = @($transferFiles | ForEach-Object { [string]$_.RelativePath })
             $lines | Set-Content -LiteralPath $listPath -Encoding UTF8
 
             Push-Location $dumpPath
             try {
-                & $sevenZip a -t7z -mx=5 -mmt=on -bsp1 $archivePath ("@" + $listPath) -scsUTF-8 2>&1 | ForEach-Object { Write-Host ([string]$_) }
+                & $sevenZip a -t7z -mx=5 -mmt=on -bsp0 -bso0 $archivePath ("@" + $listPath) -scsUTF-8 > $sevenZipStdout 2> $sevenZipStderr
                 $rc = $LASTEXITCODE
             }
             finally {
                 Pop-Location
             }
             if ($rc -ne 0) {
-                $details = (($sevenZipOutput -join [Environment]::NewLine).Trim())
+                $details = @()
+                if (Test-Path -LiteralPath $sevenZipStdout) { $details += Get-Content -LiteralPath $sevenZipStdout -Raw }
+                if (Test-Path -LiteralPath $sevenZipStderr) { $details += Get-Content -LiteralPath $sevenZipStderr -Raw }
+                $details = (($details -join [Environment]::NewLine).Trim())
                 if ([string]::IsNullOrWhiteSpace($details)) { $details = '7-Zip не вернул текст ошибки.' }
                 throw ("7za завершился с кодом {0} для {1}: {2}" -f $rc, $DatabaseName, $details)
             }
@@ -81,15 +87,26 @@ function Get-ArchiveForDatabase {
             # Создаём корректный пустой 7z: временно добавляем маркер и сразу удаляем его из архива.
             $emptyMarker = Join-Path $archiveDir ('.empty_' + [guid]::NewGuid().ToString('N') + '.txt')
             Set-Content -LiteralPath $emptyMarker -Value 'empty' -Encoding ASCII
-            $sevenZipOutput = @(& $sevenZip a -t7z -mx=5 -mmt=on -bsp0 -bso0 $archivePath $emptyMarker 2>&1)
+            & $sevenZip a -t7z -mx=5 -mmt=on -bsp0 -bso0 $archivePath $emptyMarker > $sevenZipStdout 2> $sevenZipStderr
             $rc = $LASTEXITCODE
-            if ($rc -ne 0) { throw ("Не удалось создать пустой архив для {0}: {1}" -f $DatabaseName, (($sevenZipOutput -join [Environment]::NewLine).Trim())) }
+            if ($rc -ne 0) {
+                $details = @()
+                if (Test-Path -LiteralPath $sevenZipStdout) { $details += Get-Content -LiteralPath $sevenZipStdout -Raw }
+                if (Test-Path -LiteralPath $sevenZipStderr) { $details += Get-Content -LiteralPath $sevenZipStderr -Raw }
+                $details = (($details -join [Environment]::NewLine).Trim())
+                if ([string]::IsNullOrWhiteSpace($details)) { $details = '7-Zip не вернул текст ошибки.' }
+                throw ("Не удалось создать пустой архив для {0}: {1}" -f $DatabaseName, $details)
+            }
+
             $markerName = [IO.Path]::GetFileName($emptyMarker)
-            $sevenZipOutput = @(& $sevenZip d $archivePath $markerName -bsp0 -bso0 2>&1)
+            & $sevenZip d $archivePath $markerName -bsp0 -bso0 > $sevenZipStdout 2> $sevenZipStderr
             $rc = $LASTEXITCODE
             Remove-Item -LiteralPath $emptyMarker -Force -ErrorAction SilentlyContinue
             if ($rc -ne 0) {
-                $details = (($sevenZipOutput -join [Environment]::NewLine).Trim())
+                $details = @()
+                if (Test-Path -LiteralPath $sevenZipStdout) { $details += Get-Content -LiteralPath $sevenZipStdout -Raw }
+                if (Test-Path -LiteralPath $sevenZipStderr) { $details += Get-Content -LiteralPath $sevenZipStderr -Raw }
+                $details = (($details -join [Environment]::NewLine).Trim())
                 if ([string]::IsNullOrWhiteSpace($details)) { $details = '7-Zip не вернул текст ошибки.' }
                 throw ("Не удалось удалить маркер из пустого архива {0}: {1}" -f $DatabaseName, $details)
             }
@@ -126,6 +143,8 @@ function Get-ArchiveForDatabase {
     }
     finally {
         if (Test-Path -LiteralPath $listPath) { Remove-Item -LiteralPath $listPath -Force -ErrorAction SilentlyContinue }
+        if (Test-Path -LiteralPath $sevenZipStdout) { Remove-Item -LiteralPath $sevenZipStdout -Force -ErrorAction SilentlyContinue }
+        if (Test-Path -LiteralPath $sevenZipStderr) { Remove-Item -LiteralPath $sevenZipStderr -Force -ErrorAction SilentlyContinue }
     }
 }
 
