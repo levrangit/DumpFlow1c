@@ -1,4 +1,4 @@
-﻿# DumpFlow1c: версия файла — 2026-09-30 22:00
+﻿# DumpFlow1c: версия файла — 2026-09-30 23:17
 #Requires -Version 5.1
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -101,9 +101,13 @@ function Invoke-OneCDump {
     return $stats
 }
 
-$common = Read-JsonFile (Join-Path $root 'config\common.json')
-$projectName = [string]$common.project_name
-if ([string]::IsNullOrWhiteSpace($projectName)) { throw 'В common.json не задан project_name.' }
+$computerName = $env:COMPUTERNAME
+$terminalPath = Join-Path $root ("config\terminals\{0}.json" -f $computerName)
+if (-not (Test-Path -LiteralPath $terminalPath -PathType Leaf)) { throw "Не найден файл терминала: $terminalPath" }
+$terminal = Read-JsonFile $terminalPath
+if ([string]$terminal.computer_name -ne $computerName) { throw 'computer_name в terminal JSON не совпадает с COMPUTERNAME.' }
+$projectName = [string]$terminal.project_name
+if ([string]::IsNullOrWhiteSpace($projectName)) { throw 'В terminal JSON не задан project_name.' }
 
 $computerName = $env:COMPUTERNAME
 $terminalPath = Join-Path $root ("config\terminals\{0}.json" -f $computerName)
