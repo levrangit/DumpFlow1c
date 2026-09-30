@@ -1,4 +1,4 @@
-﻿# DumpFlow1c: версия файла — 2026-09-30 23:17
+﻿# DumpFlow1c: версия файла — 2026-10-01 01:00
 #Requires -Version 5.1
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -77,11 +77,11 @@ function Get-ArchiveForDatabase {
             # Создаём корректный пустой 7z: временно добавляем маркер и сразу удаляем его из архива.
             $emptyMarker = Join-Path $archiveDir ('.empty_' + [guid]::NewGuid().ToString('N') + '.txt')
             Set-Content -LiteralPath $emptyMarker -Value 'empty' -Encoding ASCII
-            & $sevenZip a -t7z -mx=5 -mmt=on $archivePath $emptyMarker 2>&1 | ForEach-Object { Write-Host ([string]$_) }
+            & $sevenZip a -t7z -mx=5 -mmt=on -bsp0 -bso0 $archivePath $emptyMarker 2>&1 | ForEach-Object { Write-Host ([string]$_) }
             $rc = $LASTEXITCODE
             if ($rc -ne 0) { throw "Не удалось создать пустой архив для $DatabaseName" }
             $markerName = [IO.Path]::GetFileName($emptyMarker)
-            & $sevenZip d $archivePath $markerName 2>&1 | ForEach-Object { Write-Host ([string]$_) }
+            & $sevenZip d $archivePath $markerName -bsp0 -bso0 2>&1 | ForEach-Object { Write-Host ([string]$_) }
             $rc = $LASTEXITCODE
             Remove-Item -LiteralPath $emptyMarker -Force -ErrorAction SilentlyContinue
             if ($rc -ne 0) { throw "Не удалось удалить маркер из пустого архива $DatabaseName" }
