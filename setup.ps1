@@ -1,3 +1,4 @@
+# DumpFlow1c: версия файла — 2026-09-30
 #requires -Version 5.1
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $ErrorActionPreference = 'Stop'
