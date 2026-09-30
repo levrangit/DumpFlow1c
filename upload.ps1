@@ -24,10 +24,6 @@ New-Item -ItemType Directory -Force -Path $archiveDestination,$controlDestinatio
 $rclone = Join-Path (Join-Path $root 'tools') 'rclone.exe'
 if (-not (Test-Path -LiteralPath $rclone -PathType Leaf)) { throw "Не найден rclone.exe: $rclone" }
 
-$computer = $env:COMPUTERNAME
-$terminalPath = Join-Path (Join-Path $configDir 'terminals') ($computer + '.json')
-$terminal = Get-Content -Raw -LiteralPath $terminalPath -Encoding UTF8 | ConvertFrom-Json
-$mcpWork = [string]$terminal.mcp_work
 $metadataRoot = Join-Path (Join-Path $mcpWork 'metadata') $projectName
 $archiveRoot = Join-Path $mcpWork 'archive'
 
