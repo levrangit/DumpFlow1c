@@ -1,4 +1,4 @@
-﻿# DumpFlow1c: версия файла — 2026-10-01 01:45
+﻿# DumpFlow1c: версия файла — 2026-10-01 01:50
 #Requires -Version 5.1
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -66,20 +66,44 @@ function Get-ArchiveForDatabase {
             $lines = @($transferFiles | ForEach-Object { [string]$_.RelativePath })
             $lines | Set-Content -LiteralPath $listPath -Encoding UTF8
 
+            $lastPercent = -1
+            $lastProgressText = ''
+
             Push-Location $dumpPath
             try {
-                & $sevenZip a -t7z -mx=5 -mmt=on -bsp0 -bso0 $archivePath ("@" + $listPath) -scsUTF-8 > $sevenZipStdout 2> $sevenZipStderr
+                & $sevenZip a -t7z -mx=5 -mmt=on -bsp1 -bso0 $archivePath ("@" + $listPath) -scs=UTF-8 2>&1 |
+                    ForEach-Object {
+                        $line = [string]$_
+                        $match = [regex]::Match($line, '(?<!\d)(\d{1,3})%(?!\d)')
+                        if ($match.Success) {
+                            $percent = [int]$match.Groups[1].Value
+                            if ($percent -ne $lastPercent) {
+                                $lastPercent = $percent
+                                $progressText = ("  Упаковка {0}: {1,3}%" -f $DatabaseName, $percent)
+                                Write-Host (([char]13) + $progressText.PadRight($lastProgressText.Length)) -NoNewline
+                                $lastProgressText = $progressText
+                            }
+                        } elseif ($line -match 'ERROR|Error|error|WARNING|Warning|warning') {
+                            Write-Host (([char]13) + $line.PadRight($lastProgressText.Length))
+                            $lastProgressText = ''
+                        }
+                    }
                 $rc = $LASTEXITCODE
             }
             finally {
                 Pop-Location
             }
+
+            if ($lastProgressText.Length -gt 0) {
+                Write-Host ""
+            }
+
             if ($rc -ne 0) {
                 $details = @()
                 if (Test-Path -LiteralPath $sevenZipStdout) { $details += Get-Content -LiteralPath $sevenZipStdout -Raw }
                 if (Test-Path -LiteralPath $sevenZipStderr) { $details += Get-Content -LiteralPath $sevenZipStderr -Raw }
+                if ($details.Count -eq 0) { $details = @('7-Zip не вернул текст ошибки.') }
                 $details = (($details -join [Environment]::NewLine).Trim())
-                if ([string]::IsNullOrWhiteSpace($details)) { $details = '7-Zip не вернул текст ошибки.' }
                 throw ("7za завершился с кодом {0} для {1}: {2}" -f $rc, $DatabaseName, $details)
             }
         }
