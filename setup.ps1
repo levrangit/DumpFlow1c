@@ -149,6 +149,8 @@ function Terminal-Setup {
     Write-Host ''
     Write-Host 'Путь к 1cv8.exe:'
     Write-Host "[$OnecBin]"
+    Write-Host 'Подсказка: выполните команду ниже, чтобы найти установленный 1cv8.exe:'
+    Write-Host 'Get-ChildItem -Path "$env:ProgramFiles\1cv8","$env:ProgramFiles(x86)\1cv8" -Filter 1cv8.exe -File -Recurse -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName'
     $value = Read-Host 'Новый путь (Enter - оставить текущее)'
     if (-not [string]::IsNullOrWhiteSpace($value)) { $OnecBin = $value }
 
