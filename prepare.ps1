@@ -1,4 +1,4 @@
-﻿# DumpFlow1c: версия файла — 2026-09-30 22:00
+﻿# DumpFlow1c: версия файла — 2026-09-30 23:17
 #Requires -Version 5.1
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -8,18 +8,19 @@ Write-Host '------------------------------------------------------------'
 Write-Host 'MCP - PREPARE'
 Write-Host '------------------------------------------------------------'
 
-$commonPath = Join-Path $configDir 'common.json'
-if (-not (Test-Path -LiteralPath $commonPath -PathType Leaf)) { throw 'Не найден config\common.json.' }
+$computer = $env:COMPUTERNAME
+$terminalPath = Join-Path (Join-Path $configDir 'terminals') ($computer + '.json')
+if (-not (Test-Path -LiteralPath $terminalPath -PathType Leaf)) { throw "Не найден файл терминала: $terminalPath" }
+$terminal = Get-Content -Raw -LiteralPath $terminalPath -Encoding UTF8 | ConvertFrom-Json
+if ([string]$terminal.computer_name -ne $computer) { throw 'computer_name в terminal JSON не совпадает с COMPUTERNAME.' }
+$projectName = [string]$terminal.project_name
+$rdpDrive = [string]$terminal.rdp_drive
+$mcpPath = [string]$terminal.mcp_path
 
-$common = Get-Content -Raw -LiteralPath $commonPath -Encoding UTF8 | ConvertFrom-Json
-$projectName = [string]$common.project_name
-$rdpDrive = [string]$common.rdp_drive
-$mcpPath = [string]$common.mcp_path
-
-if ([string]::IsNullOrWhiteSpace($projectName)) { throw 'В common.json не задан project_name.' }
+if ([string]::IsNullOrWhiteSpace($projectName)) { throw 'В terminal JSON не задан project_name.' }
 if ($projectName -notmatch '^[A-Za-z0-9][A-Za-z0-9_-]*$') { throw "Некорректный project_name: $projectName" }
-if ([string]::IsNullOrWhiteSpace($rdpDrive)) { throw 'В common.json не задан rdp_drive.' }
-if ([string]::IsNullOrWhiteSpace($mcpPath)) { throw 'В common.json не задан mcp_path.' }
+if ([string]::IsNullOrWhiteSpace($rdpDrive)) { throw 'В terminal JSON не задан rdp_drive.' }
+if ([string]::IsNullOrWhiteSpace($mcpPath)) { throw 'В terminal JSON не задан mcp_path.' }
 if (-not (Test-Path -LiteralPath $rdpDrive)) { throw "RDP-диск недоступен: $rdpDrive" }
 
 $rdpMcp = Join-Path $rdpDrive $mcpPath
