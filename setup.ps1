@@ -1,4 +1,4 @@
-﻿# DumpFlow1c: версия файла — 2026-09-30 22:51
+﻿# DumpFlow1c: версия файла — 2026-09-30 23:17
 #requires -Version 5.1
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $ErrorActionPreference = 'Stop'
@@ -11,7 +11,6 @@ $DatabasesDir = Join-Path $ConfigDir 'databases'
 
 New-Item -ItemType Directory -Force -Path $ConfigDir,$TerminalsDir,$DatabasesDir | Out-Null
 
-$CommonJson = Join-Path $ConfigDir 'common.json'
 $Computer = $env:COMPUTERNAME
 $UserName = $env:USERNAME
 $TerminalJson = Join-Path $TerminalsDir "$Computer.json"
@@ -28,51 +27,34 @@ function Save-JsonFile {
     $Object | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $Path -Encoding UTF8
 }
 
-function Load-Common {
-    $script:Common = Read-JsonFile -Path $CommonJson
-    if ($null -eq $Common) {
-        $script:Common = [ordered]@{
-            project_name = 'AKK'
-            rdp_drive = '\\tsclient\L'
-            mcp_path = '!work\RAU_IT\MCP'
-        }
-        Save-JsonFile -Path $CommonJson -Object $Common
-    }
-
-    if ([string]::IsNullOrWhiteSpace($Common.project_name)) { $Common.project_name = 'AKK' }
-    if ([string]::IsNullOrWhiteSpace($Common.rdp_drive)) { $Common.rdp_drive = '\\tsclient\L' }
-    if ([string]::IsNullOrWhiteSpace($Common.mcp_path)) { $Common.mcp_path = '!work\RAU_IT\MCP' }
-
-    $script:ProjectName = [string]$Common.project_name
-    $script:RdpDrive = [string]$Common.rdp_drive
-    $script:McpPath = [string]$Common.mcp_path
-}
-
 function Load-Terminal {
     $script:Terminal = Read-JsonFile -Path $TerminalJson
     if ($null -eq $Terminal) {
+        $script:ProjectName = 'AKK'
+        $script:RdpDrive = '\\tsclient\L'
+        $script:McpPath = '!work\RAU_IT\MCP'
         $script:McpWork = ''
         $script:OnecBin = ''
     }
     else {
+        $script:ProjectName = [string]$Terminal.project_name
+        $script:RdpDrive = [string]$Terminal.rdp_drive
+        $script:McpPath = [string]$Terminal.mcp_path
         $script:McpWork = [string]$Terminal.mcp_work
         $script:OnecBin = [string]$Terminal.onec_bin
+        if ([string]::IsNullOrWhiteSpace($ProjectName)) { $script:ProjectName = 'AKK' }
+        if ([string]::IsNullOrWhiteSpace($RdpDrive)) { $script:RdpDrive = '\\tsclient\L' }
+        if ([string]::IsNullOrWhiteSpace($McpPath)) { $script:McpPath = '!work\RAU_IT\MCP' }
     }
-}
-
-function Save-Common {
-    $obj = [ordered]@{
-        project_name = $ProjectName
-        rdp_drive = $RdpDrive
-        mcp_path = $McpPath
-    }
-    Save-JsonFile -Path $CommonJson -Object $obj
 }
 
 function Save-Terminal {
     $obj = [ordered]@{
         computer_name = $Computer
         username = $UserName
+        project_name = $ProjectName
+        rdp_drive = $RdpDrive
+        mcp_path = $McpPath
         mcp_work = $McpWork
         onec_bin = $OnecBin
     }
