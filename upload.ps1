@@ -12,8 +12,10 @@ if ([string]$terminal.computer_name -ne $computer) { throw 'computer_name в ter
 $projectName = [string]$terminal.project_name
 $rdpDrive = [string]$terminal.rdp_drive
 $mcpPath = [string]$terminal.mcp_path
+$mcpWork = [string]$terminal.mcp_work
 if ([string]::IsNullOrWhiteSpace($projectName)) { throw 'В terminal JSON не задан project_name.' }
 if ([string]::IsNullOrWhiteSpace($rdpDrive) -or [string]::IsNullOrWhiteSpace($mcpPath)) { throw 'В terminal JSON не заданы rdp_drive/mcp_path.' }
+if ([string]::IsNullOrWhiteSpace($mcpWork)) { throw 'В terminal JSON не задан mcp_work.' }
 if (-not (Test-Path -LiteralPath $rdpDrive)) { throw "RDP-диск недоступен: $rdpDrive" }
 
 $rdpMcp = Join-Path $rdpDrive $mcpPath
