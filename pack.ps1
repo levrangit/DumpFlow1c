@@ -71,7 +71,12 @@ function Get-ArchiveForDatabase {
 
             Push-Location $dumpPath
             try {
-                & $sevenZip a -t7z -mx=5 -mmt=on -bsp1 -bso0 $archivePath ("@" + $listPath) -scs=UTF-8 2>&1 |
+                # 7-Zip пишет индикатор -bsp1 в stderr. В PowerShell 5.1
+                # нативный stderr превращается в NativeCommandError, поэтому
+                # запускаем 7za через cmd.exe и объединяем stderr со stdout на стороне cmd.
+                $sevenZipCommand = ('"{0}" a -t7z -mx=5 -mmt=on -bsp1 -bso0 "{1}" "@{2}" -scs=UTF-8 2>&1' -f $sevenZip, $archivePath, $listPath)
+
+                & cmd.exe /d /c $sevenZipCommand |
                     ForEach-Object {
                         $line = [string]$_
                         $match = [regex]::Match($line, '(?<!\d)(\d{1,3})%(?!\d)')
