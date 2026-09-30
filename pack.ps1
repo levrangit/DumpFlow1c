@@ -1,11 +1,17 @@
-﻿# DumpFlow1c: версия файла — 2026-09-30 22:00
+﻿# DumpFlow1c: версия файла — 2026-09-30 23:17
 #Requires -Version 5.1
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
 $configDir = Join-Path $root 'config'
-$common = Get-Content -Raw -LiteralPath (Join-Path $configDir 'common.json') -Encoding UTF8 | ConvertFrom-Json
-$projectName = [string]$common.project_name
-if ([string]::IsNullOrWhiteSpace($projectName)) { throw 'В common.json не задан project_name.' }
+$computer = $env:COMPUTERNAME
+$terminalPath = Join-Path (Join-Path $configDir 'terminals') ($computer + '.json')
+if (-not (Test-Path -LiteralPath $terminalPath -PathType Leaf)) { throw "Не найден файл терминала: $terminalPath" }
+$terminal = Get-Content -Raw -LiteralPath $terminalPath -Encoding UTF8 | ConvertFrom-Json
+if ([string]$terminal.computer_name -ne $computer) { throw 'computer_name в terminal JSON не совпадает с COMPUTERNAME.' }
+$projectName = [string]$terminal.project_name
+$mcpWork = [string]$terminal.mcp_work
+if ([string]::IsNullOrWhiteSpace($projectName)) { throw 'В terminal JSON не задан project_name.' }
+if ([string]::IsNullOrWhiteSpace($mcpWork)) { throw 'В terminal JSON не задан mcp_work.' }
 
 $computer = $env:COMPUTERNAME
 $terminalPath = Join-Path (Join-Path $configDir 'terminals') ($computer + '.json')
