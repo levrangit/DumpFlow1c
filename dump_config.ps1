@@ -1,12 +1,9 @@
 ﻿#Requires -Version 5.1
-# Если PowerShell запрещает запуск скрипта, выполните:
-# Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
-# Проверить текущую политику:
-# Get-ExecutionPolicy -List
-
 $ErrorActionPreference = 'Stop'
-Write-Host 'MCP - DUMP CONFIG'
 $root = $PSScriptRoot
+
+Write-Host 'MCP - DUMP CONFIG'
+Write-Host '------------------------------------------------------------'
 
 function Read-JsonFile {
     param([string]$Path)
@@ -40,7 +37,6 @@ function Get-DumpStatistics {
 
 function Wait-DumpCompletion {
     param([string]$Path,[string]$Description,[string]$LogPath,[int]$StableSeconds = 30,[int]$CheckIntervalSeconds = 5,[int]$TimeoutMinutes = 60)
-
     $timeout = (Get-Date).AddMinutes($TimeoutMinutes)
     $lastCount = -1
     $lastSize = -1
@@ -49,15 +45,11 @@ function Wait-DumpCompletion {
     $seenFiles = $false
 
     Write-Log "Ожидание завершения: $Description" $LogPath
-
     while ($true) {
-        if ((Get-Date) -gt $timeout) {
-            throw "Таймаут ожидания выгрузки '$Description': $TimeoutMinutes мин."
-        }
+        if ((Get-Date) -gt $timeout) { throw "Таймаут ожидания выгрузки '$Description': $TimeoutMinutes мин." }
 
         $stats = Get-DumpStatistics $Path
         if ($stats.Count -gt 0) { $seenFiles = $true }
-
         $changed = ($stats.Count -ne $lastCount -or $stats.TotalBytes -ne $lastSize -or $stats.LastWrite -ne $lastWrite)
 
         if ($changed) {
@@ -70,47 +62,48 @@ function Wait-DumpCompletion {
         elseif ($seenFiles) {
             if ($null -eq $stableSince) { $stableSince = Get-Date }
             if (((Get-Date) - $stableSince).TotalSeconds -ge $StableSeconds) {
-                Write-Log ("Каталог стабилен {0} сек.: файлов={1}; размер={2} MB; последний файл={3}" -f $StableSeconds,$stats.Count,[math]::Round($stats.TotalBytes / 1MB,2),$stats.LastWrite) $LogPath
+                Write-Log ("Каталог стабилен {0} сек.: файлов={1}; размер={2} MB" -f $StableSeconds,$stats.Count,[math]::Round($stats.TotalBytes / 1MB,2)) $LogPath
                 return $stats
             }
         }
-
         Start-Sleep -Seconds $CheckIntervalSeconds
     }
 }
 
 function Invoke-OneCDump {
-    param([string]$OneCExe,[string]$Server,[string]$Database,[string]$User,[string]$Password,[string]$OutputPath,[string]$Description,[string]$LogPath,[string]$ExtensionName)
+    param(
+        [string]$OneCExe,[string]$Server,[string]$Database,[string]$User,[string]$Password,
+        [string]$OutputPath,[string]$Description,[string]$LogPath,[string]$ExtensionName
+    )
 
     $source = "$Server\$Database"
     Write-Log "Запуск выгрузки: $Description" $LogPath
     Write-Log "Источник: $source" $LogPath
-    Write-Log "Каталог: $OutputPath" $LogPath
+    Write-Log "Постоянный каталог: $OutputPath" $LogPath
 
-    # 1cv8.exe с /DumpConfigToFiles запускает фактическую выгрузку асинхронно:
-    # родительский процесс может завершиться раньше дочернего процесса.
-    # Поэтому /Out нельзя направлять в тот же файл, который пишет PowerShell.
     $logDirectory = Split-Path -Parent $LogPath
     $oneCLogPath = Join-Path $logDirectory ("1cv8_{0}_{1}.log" -f (Get-Date -Format 'yyyyMMdd_HHmmss_fff'), ([guid]::NewGuid().ToString('N').Substring(0,8)))
 
-    Write-Log "Лог 1cv8.exe: $oneCLogPath" $LogPath
-
     if ([string]::IsNullOrWhiteSpace($ExtensionName)) {
         & $OneCExe DESIGNER /S $source /N $User /P $Password /DisableStartupDialogs /DumpConfigToFiles $OutputPath /Out $oneCLogPath
-    } else {
+    }
+    else {
         & $OneCExe DESIGNER /S $source /N $User /P $Password /DisableStartupDialogs /DumpConfigToFiles $OutputPath -Extension $ExtensionName /Out $oneCLogPath
     }
 
     $exitCode = $LASTEXITCODE
     Write-Log "Команда 1cv8.exe завершилась. EXIT CODE: $exitCode" $LogPath
+    if ($exitCode -ne 0) { throw "1cv8.exe завершился с кодом $exitCode: $Description" }
 
     $stats = Wait-DumpCompletion $OutputPath $Description $LogPath
     if ($stats.Count -le 0) { throw "Выгрузка завершилась без файлов: $Description" }
-    Write-Log ("Выгрузка завершена: файлов={0}; размер={1} MB" -f $stats.Count,[math]::Round($stats.TotalBytes / 1MB,2)) $LogPath
     return $stats
 }
 
 $common = Read-JsonFile (Join-Path $root 'config\common.json')
+$projectName = [string]$common.project_name
+if ([string]::IsNullOrWhiteSpace($projectName)) { throw 'В common.json не задан project_name.' }
+
 $computerName = $env:COMPUTERNAME
 $terminalPath = Join-Path $root ("config\terminals\{0}.json" -f $computerName)
 $terminal = Read-JsonFile $terminalPath
@@ -120,7 +113,7 @@ $onecBin = [string]$terminal.onec_bin
 if (-not (Test-Path -LiteralPath $mcpWork -PathType Container)) { throw "Рабочий каталог MCP не найден: $mcpWork" }
 if (-not (Test-Path -LiteralPath $onecBin -PathType Leaf)) { throw "1cv8.exe не найден: $onecBin" }
 
-$dumpRoot = Join-Path $mcpWork 'dump'
+$dumpRoot = Join-Path (Join-Path $mcpWork 'dump') $projectName
 $logsRoot = Join-Path $mcpWork 'logs'
 New-Item -ItemType Directory -Path $dumpRoot,$logsRoot -Force | Out-Null
 $logPath = Join-Path $logsRoot ("dump_config_{0}.log" -f (Get-Date -Format 'yyyyMMdd_HHmmss'))
@@ -130,9 +123,10 @@ if (-not (Test-Path -LiteralPath $dbDir -PathType Container)) { throw "Ката�
 $dbFiles = @(Get-ChildItem -LiteralPath $dbDir -Filter '*.json' -File | Sort-Object Name)
 if ($dbFiles.Count -eq 0) { throw "Не найдено ни одного JSON базы: $dbDir" }
 
+Write-Log "Проект: $projectName" $logPath
 Write-Log "Компьютер: $computerName" $logPath
 Write-Log "Рабочий каталог: $mcpWork" $logPath
-Write-Log "1cv8.exe: $onecBin" $logPath
+Write-Log "Каталог dump проекта: $dumpRoot" $logPath
 Write-Log "Баз найдено: $($dbFiles.Count)" $logPath
 
 $ids = @{}
@@ -141,6 +135,7 @@ foreach ($file in $dbFiles) {
     $id = [string]$db.db_source_id
     if ([string]::IsNullOrWhiteSpace($id)) { throw "В файле '$($file.FullName)' отсутствует db_source_id." }
     if ($ids.ContainsKey($id)) { throw "DB_SOURCE_ID не уникален: $id" }
+    if ($id -notmatch '^[A-Za-z0-9][A-Za-z0-9_-]*$') { throw "Некорректный DB_SOURCE_ID: $id" }
     $ids[$id] = $file.FullName
     if ($file.Name -ne "$id.json") { throw "Имя файла '$($file.Name)' не совпадает с DB_SOURCE_ID '$id'." }
 }
@@ -157,44 +152,46 @@ foreach ($dbFile in $dbFiles) {
         throw "Не заполнены параметры подключения для '$id'."
     }
 
-    $finalPath = Join-Path $dumpRoot $id
-    $newPath = Join-Path $dumpRoot ($id + '.__new')
-    if (Test-Path -LiteralPath $newPath) { Remove-Item -LiteralPath $newPath -Recurse -Force }
-
-    $configPath = Join-Path $newPath 'config'
-    $extensionsPath = Join-Path $newPath 'extensions'
+    $dumpPath = Join-Path $dumpRoot $id
+    $configPath = Join-Path $dumpPath 'config'
+    $extensionsPath = Join-Path $dumpPath 'extensions'
     New-Item -ItemType Directory -Path $configPath,$extensionsPath -Force | Out-Null
+
+    $extensions = @($db.extensions)
+    $configuredExtensions = @($extensions | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+
+    # Удаляем только каталоги расширений, которых больше нет в настройках.
+    # Каталог основной конфигурации не заменяется и не удаляется:
+    # это позволяет 1С использовать ConfigDumpInfo.xml для инкрементальной выгрузки.
+    foreach ($oldExtensionDir in @(Get-ChildItem -LiteralPath $extensionsPath -Directory -ErrorAction SilentlyContinue)) {
+        if ($configuredExtensions -notcontains $oldExtensionDir.Name) {
+            Remove-Item -LiteralPath $oldExtensionDir.FullName -Recurse -Force
+            Write-Log "Удалено неактуальное расширение из dump: $($oldExtensionDir.Name)" $logPath
+        }
+    }
 
     try {
         Write-Log "============================================================" $logPath
         Write-Log "Выгрузка базы: $id" $logPath
+        Write-Log "Постоянный dump: $dumpPath" $logPath
 
         Invoke-OneCDump $onecBin $server $database $user $password $configPath "$id / основная конфигурация" $logPath
 
-        $extensions = @($db.extensions)
-        foreach ($extensionValue in $extensions) {
-            $extensionName = [string]$extensionValue
-            if ([string]::IsNullOrWhiteSpace($extensionName)) { throw "Пустое имя расширения для '$id'." }
-
+        foreach ($extensionName in $configuredExtensions) {
             $extensionPath = Join-Path $extensionsPath $extensionName
             New-Item -ItemType Directory -Path $extensionPath -Force | Out-Null
-
             Invoke-OneCDump $onecBin $server $database $user $password $extensionPath "$id / расширение $extensionName" $logPath $extensionName
         }
 
-        $finalStats = Get-DumpStatistics $newPath
-        if ($finalStats.Count -le 0) { throw "Staging пуст: $newPath" }
-
-        if (Test-Path -LiteralPath $finalPath) { Remove-Item -LiteralPath $finalPath -Recurse -Force }
-        Rename-Item -LiteralPath $newPath -NewName $id
-
+        $finalStats = Get-DumpStatistics $dumpPath
+        if ($finalStats.Count -le 0) { throw "Dump пуст: $dumpPath" }
         Write-Log ("База '$id' успешно выгружена: файлов={0}; размер={1} MB" -f $finalStats.Count,[math]::Round($finalStats.TotalBytes / 1MB,2)) $logPath
     }
     catch {
         Write-Log ("ОШИБКА базы '$id': {0}" -f $_.Exception.Message) $logPath
-        if (Test-Path -LiteralPath $newPath) { Remove-Item -LiteralPath $newPath -Recurse -Force -ErrorAction SilentlyContinue }
         throw
     }
 }
 
-Write-Log "DUMP CONFIG завершён успешно." $logPath
+Write-Log 'DUMP CONFIG завершён успешно.' $logPath
+exit 0
