@@ -120,7 +120,6 @@ function Terminal-Setup {
     $value = Read-Host 'Новый путь (Enter - оставить текущее)'
     if (-not [string]::IsNullOrWhiteSpace($value)) { $McpPath = $value }
 
-    Save-Common
 
     Write-Host ''
     Write-Host 'Рабочий каталог терминала:'
@@ -226,7 +225,6 @@ function Database-Setup {
     if ($addMore -match '^[Yy]$') { Database-Setup }
 }
 
-Load-Common
 Load-Terminal
 
 while ($true) {
