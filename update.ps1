@@ -1,4 +1,4 @@
-﻿# DumpFlow1c: версия файла — 2026-09-30 22:00
+﻿# DumpFlow1c: версия файла — 2026-09-30 23:17
 #Requires -Version 5.1
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -13,11 +13,14 @@ if ($LASTEXITCODE -ne 0) { throw "prepare.ps1 завершился с кодом
 & (Join-Path $root 'dump_config.ps1')
 if ($LASTEXITCODE -ne 0) { throw "dump_config.ps1 завершился с кодом $LASTEXITCODE." }
 
-$common = Get-Content -Raw -LiteralPath (Join-Path $root 'config\common.json') -Encoding UTF8 | ConvertFrom-Json
-$projectName = [string]$common.project_name
 $computer = $env:COMPUTERNAME
-$terminal = Get-Content -Raw -LiteralPath (Join-Path $root ("config\terminals\{0}.json" -f $computer)) -Encoding UTF8 | ConvertFrom-Json
+$terminalPath = Join-Path $root ("config\terminals\{0}.json" -f $computer)
+if (-not (Test-Path -LiteralPath $terminalPath -PathType Leaf)) { throw "Не найден файл терминала: $terminalPath" }
+$terminal = Get-Content -Raw -LiteralPath $terminalPath -Encoding UTF8 | ConvertFrom-Json
+$projectName = [string]$terminal.project_name
 $mcpWork = [string]$terminal.mcp_work
+if ([string]::IsNullOrWhiteSpace($projectName)) { throw 'В terminal JSON не задан project_name.' }
+if ([string]::IsNullOrWhiteSpace($mcpWork)) { throw 'В terminal JSON не задан mcp_work.' }
 $dumpRoot = Join-Path (Join-Path $mcpWork 'dump') $projectName
 $metadataRoot = Join-Path (Join-Path $mcpWork 'metadata') $projectName
 New-Item -ItemType Directory -Force -Path $metadataRoot | Out-Null
