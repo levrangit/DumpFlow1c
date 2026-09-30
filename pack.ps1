@@ -13,10 +13,6 @@ $mcpWork = [string]$terminal.mcp_work
 if ([string]::IsNullOrWhiteSpace($projectName)) { throw 'В terminal JSON не задан project_name.' }
 if ([string]::IsNullOrWhiteSpace($mcpWork)) { throw 'В terminal JSON не задан mcp_work.' }
 
-$computer = $env:COMPUTERNAME
-$terminalPath = Join-Path (Join-Path $configDir 'terminals') ($computer + '.json')
-$terminal = Get-Content -Raw -LiteralPath $terminalPath -Encoding UTF8 | ConvertFrom-Json
-$mcpWork = [string]$terminal.mcp_work
 $dumpRoot = Join-Path (Join-Path $mcpWork 'dump') $projectName
 $metadataRoot = Join-Path (Join-Path $mcpWork 'metadata') $projectName
 $archiveDir = Join-Path $mcpWork 'archive'
