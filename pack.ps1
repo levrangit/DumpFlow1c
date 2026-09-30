@@ -71,15 +71,47 @@ function Get-ArchiveForDatabase {
 
             Push-Location $dumpPath
             try {
-                # 7-Zip пишет индикатор -bsp1 в stderr. В PowerShell 5.1
-                # нативный stderr превращается в NativeCommandError, поэтому
-                # запускаем 7za через cmd.exe и объединяем stderr со stdout на стороне cmd.
-                $sevenZipCommand = ('"{0}" a -t7z -mx=5 -mmt=on -bsp1 -bso0 "{1}" "@{2}" -scs=UTF-8 2>&1' -f $sevenZip, $archivePath, $listPath)
+                # 7-Zip пишет прогресс в stderr. Не запускаем его напрямую через
+                # оператор &, потому что PowerShell 5.1 превращает native stderr
+                # в NativeCommandError. Используем System.Diagnostics.Process,
+                # чтобы читать stderr как обычный поток и показывать только проценты.
+                $argumentList = @(
+                    'a',
+                    '-t7z',
+                    '-mx=5',
+                    '-mmt=on',
+                    '-bsp1',
+                    '-bso0',
+                    ('"{0}"' -f $archivePath),
+                    ('"@{0}"' -f $listPath),
+                    '-scsUTF-8'
+                )
 
-                & cmd.exe /d /c $sevenZipCommand |
-                    ForEach-Object {
-                        $line = [string]$_
-                        $match = [regex]::Match($line, '(?<!\d)(\d{1,3})%(?!\d)')
+                $psi = New-Object System.Diagnostics.ProcessStartInfo
+                $psi.FileName = $sevenZip
+                $psi.Arguments = ($argumentList -join ' ')
+                $psi.WorkingDirectory = $dumpPath
+                $psi.UseShellExecute = $false
+                $psi.CreateNoWindow = $true
+                $psi.RedirectStandardOutput = $true
+                $psi.RedirectStandardError = $true
+
+                $process = New-Object System.Diagnostics.Process
+                $process.StartInfo = $psi
+
+                try {
+                    [void]$process.Start()
+
+                    # При -bso0 stdout практически пуст. Сначала читаем stderr,
+                    # где находится живой индикатор -bsp1.
+                    while (-not $process.HasExited) {
+                        $line = $process.StandardError.ReadLine()
+                        if ($null -eq $line) {
+                            Start-Sleep -Milliseconds 20
+                            continue
+                        }
+
+                        $match = [regex]::Match([string]$line, '(?<!\d)(\d{1,3})%(?!\d)')
                         if ($match.Success) {
                             $percent = [int]$match.Groups[1].Value
                             if ($percent -ne $lastPercent) {
@@ -88,12 +120,40 @@ function Get-ArchiveForDatabase {
                                 Write-Host (([char]13) + $progressText.PadRight($lastProgressText.Length)) -NoNewline
                                 $lastProgressText = $progressText
                             }
-                        } elseif ($line -match 'ERROR|Error|error|WARNING|Warning|warning') {
+                        } elseif ($line -match 'ERROR|Error|error|WARNING|Warning|warning|Command Line Error') {
                             Write-Host (([char]13) + $line.PadRight($lastProgressText.Length))
                             $lastProgressText = ''
                         }
                     }
-                $rc = $LASTEXITCODE
+
+                    # Забираем остаток stderr после завершения процесса.
+                    while (-not $process.StandardError.EndOfStream) {
+                        $line = $process.StandardError.ReadLine()
+                        if ($null -eq $line) { break }
+
+                        $match = [regex]::Match([string]$line, '(?<!\d)(\d{1,3})%(?!\d)')
+                        if ($match.Success) {
+                            $percent = [int]$match.Groups[1].Value
+                            if ($percent -ne $lastPercent) {
+                                $lastPercent = $percent
+                                $progressText = ("  Упаковка {0}: {1,3}%" -f $DatabaseName, $percent)
+                                Write-Host (([char]13) + $progressText.PadRight($lastProgressText.Length)) -NoNewline
+                                $lastProgressText = $progressText
+                            }
+                        } elseif ($line -match 'ERROR|Error|error|WARNING|Warning|warning|Command Line Error') {
+                            Write-Host (([char]13) + $line.PadRight($lastProgressText.Length))
+                            $lastProgressText = ''
+                        }
+                    }
+
+                    # stdout нужен только для диагностики, если 7-Zip вернул ошибку.
+                    $sevenZipStdoutText = $process.StandardOutput.ReadToEnd()
+                    $process.WaitForExit()
+                    $rc = $process.ExitCode
+                }
+                finally {
+                    $process.Dispose()
+                }
             }
             finally {
                 Pop-Location
