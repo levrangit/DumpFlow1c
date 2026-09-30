@@ -1,4 +1,4 @@
-﻿# DumpFlow1c: версия файла — 2026-09-30 23:17
+﻿# DumpFlow1c: версия файла — 2026-09-30 23:35
 #Requires -Version 5.1
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -94,7 +94,7 @@ function Invoke-OneCDump {
 
     $exitCode = $LASTEXITCODE
     Write-Log "Команда 1cv8.exe завершилась. EXIT CODE: $exitCode" $LogPath
-    if ($exitCode -ne 0) { throw "1cv8.exe завершился с кодом $exitCode: $Description" }
+    if ($exitCode -ne 0) { throw "1cv8.exe завершился с кодом ${exitCode}: $Description" }
 
     $stats = Wait-DumpCompletion $OutputPath $Description $LogPath
     if ($stats.Count -le 0) { throw "Выгрузка завершилась без файлов: $Description" }
