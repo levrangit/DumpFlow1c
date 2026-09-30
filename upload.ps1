@@ -1,4 +1,4 @@
-﻿# DumpFlow1c: версия файла — 2026-09-30 23:32
+﻿# DumpFlow1c: версия файла — 2026-09-30 23:35
 #Requires -Version 5.1
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -44,7 +44,7 @@ function Invoke-RcloneCopyTo {
     param([string]$Source,[string]$Destination)
     Write-Host "Передача: $Source -> $Destination"
     & $rclone copyto $Source $Destination --progress --stats 5s --verbose
-    if ($LASTEXITCODE -ne 0) { throw "rclone завершился с кодом $LASTEXITCODE: $Source" }
+    if ($LASTEXITCODE -ne 0) { throw "rclone завершился с кодом ${LASTEXITCODE}: $Source" }
 }
 
 $dbDir = Join-Path (Join-Path $configDir 'databases') $computer
