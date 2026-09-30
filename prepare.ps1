@@ -27,13 +27,6 @@ $rdpMcp = Join-Path $rdpDrive $mcpPath
 $rdpControl = Join-Path $rdpMcp 'control_upload'
 New-Item -ItemType Directory -Force -Path $rdpControl | Out-Null
 
-$computer = $env:COMPUTERNAME
-$terminalPath = Join-Path (Join-Path $configDir 'terminals') ($computer + '.json')
-if (-not (Test-Path -LiteralPath $terminalPath -PathType Leaf)) { throw "Не найден файл терминала: $terminalPath" }
-
-$terminal = Get-Content -Raw -LiteralPath $terminalPath -Encoding UTF8 | ConvertFrom-Json
-if ([string]$terminal.computer_name -ne $computer) { throw 'computer_name в terminal JSON не совпадает с COMPUTERNAME.' }
-
 $mcpWork = [string]$terminal.mcp_work
 $onecBin = [string]$terminal.onec_bin
 if ([string]::IsNullOrWhiteSpace($mcpWork)) { throw 'В terminal JSON не задан mcp_work.' }
