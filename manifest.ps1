@@ -1,4 +1,4 @@
-﻿# DumpFlow1c: версия файла — 2026-09-30 23:56
+﻿# DumpFlow1c: версия файла — 2026-10-01 00:10
 #Requires -Version 5.1
 [CmdletBinding()]
 param(
@@ -97,7 +97,7 @@ function New-Manifest {
     foreach ($file in $files) {
         $index++
         $relative = $file.FullName.Substring($DumpPath.Length).TrimStart('\','/')
-        $relative = $relative -replace '\','/'
+        $relative = $relative.Replace('\','/')
 
         $record = [ordered]@{
             RelativePath = $relative
