@@ -21,6 +21,10 @@ $sevenZipSource = Join-Path (Join-Path $root 'tools') '7za.exe'
 $localToolsDir = Join-Path $mcpWork 'tools'
 $sevenZip = Join-Path $localToolsDir '7za.exe'
 
+function Write-Step([string]$Text) {
+    Write-Host ("[PACK] {0}" -f $Text)
+}
+
 New-Item -ItemType Directory -Force -Path $localToolsDir | Out-Null
 if (-not (Test-Path -LiteralPath $sevenZipSource -PathType Leaf)) { throw "Не найден исходный 7za.exe: $sevenZipSource" }
 
@@ -42,10 +46,6 @@ if (-not (Test-Path -LiteralPath $sevenZip -PathType Leaf)) { throw "Не уда
 Write-Step '7-Zip скопирован локально.'
 
 New-Item -ItemType Directory -Force -Path $archiveDir | Out-Null
-
-function Write-Step([string]$Text) {
-    Write-Host ("[PACK] {0}" -f $Text)
-}
 
 function Get-Hash([string]$Path) {
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
