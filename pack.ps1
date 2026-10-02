@@ -1,4 +1,4 @@
-# DumpFlow1c: версия файла — 2026-10-03 00:25
+# DumpFlow1c: версия файла — 2026-10-03 00:27
 #Requires -Version 5.1
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -110,6 +110,7 @@ function Get-ArchiveForDatabase {
                     '-mx=5',
                     '-mmt=on',
                     '-bsp1',
+                    '-bso1',
                     $archivePath,
                     ('@' + $listPath),
                     '-scsUTF-8'
@@ -189,9 +190,7 @@ function Get-ArchiveForDatabase {
         }
     }
     finally {
-        if (Test-Path -LiteralPath $listPath) { Remove-Item -LiteralPath $listPath -Force -ErrorAction SilentlyContinue }
-        if (Test-Path -LiteralPath $sevenZipStdout) { Remove-Item -LiteralPath $sevenZipStdout -Force -ErrorAction SilentlyContinue }
-        if (Test-Path -LiteralPath $sevenZipStderr) { Remove-Item -LiteralPath $sevenZipStderr -Force -ErrorAction SilentlyContinue }
+        if ($listPath -and (Test-Path -LiteralPath $listPath)) { Remove-Item -LiteralPath $listPath -Force -ErrorAction SilentlyContinue }
     }
 }
 
