@@ -1,4 +1,4 @@
-# DumpFlow1c: версия файла — 2026-10-03 01:14
+# DumpFlow1c: версия файла — 2026-10-03 01:20
 #Requires -Version 5.1
 [CmdletBinding()]
 param(
@@ -58,6 +58,22 @@ function Get-CheckState([string]$Label,[string]$Path,[int64]$Size,[string]$Kind,
     return [PSCustomObject]@{ Label=$Label; State=if ($valid) { 'OK' } else { 'HASH ERROR' }; Size=$Size; Received=$true; Valid=$valid }
 }
 
+function Write-Status([string]$Text) {
+    $width = [Console]::WindowWidth
+    if ($width -lt 20) { $width = 120 }
+    $maxLength = $width - 1
+    if ($Text.Length -gt $maxLength) { $Text = $Text.Substring(0, $maxLength) }
+    try {
+        [Console]::SetCursorPosition(0, [Console]::CursorTop)
+        [Console]::Write((' ' * $maxLength))
+        [Console]::SetCursorPosition(0, [Console]::CursorTop)
+        [Console]::Write($Text)
+    }
+    catch {
+        Write-Host ("`r" + $Text) -NoNewline
+    }
+}
+
 Write-Host '------------------------------------------------------------'
 Write-Host 'MCP - CONTROL_UPLOAD'
 Write-Host '------------------------------------------------------------'
@@ -74,19 +90,18 @@ while ($true) {
     $receivedBytes = [int64]0
     $completeFiles = 0
     $totalFiles = $expected.Count * 4
-    $statusParts = @()
+    $databaseParts = @()
 
     foreach ($item in $expected) {
         $database = [string]$item.Database
         $snapshot = [string]$item.SnapshotId
-
         $checks = @(
             (Get-CheckState '7z' (Join-Path $archiveDir $item.Archive.Name) ([int64]$item.Archive.SizeBytes) 'SHA256' ([string]$item.Archive.SHA256) ([string]$item.Archive.Name)),
             (Get-CheckState 'SHA256' (Join-Path $archiveDir $item.ArchiveChecksum.Name) ([int64]$item.ArchiveChecksum.SizeBytes) 'SIDECAR' ([string]$item.Archive.SHA256) ([string]$item.Archive.Name)),
             (Get-CheckState 'manifest' (Join-Path $archiveDir $item.Manifest.Name) ([int64]$item.Manifest.SizeBytes) 'MD5' ([string]$item.Manifest.MD5) ([string]$item.Archive.Name)),
             (Get-CheckState 'changes' (Join-Path $archiveDir $item.Changes.Name) ([int64]$item.Changes.SizeBytes) 'MD5' ([string]$item.Changes.MD5) ([string]$item.Archive.Name))
         )
-
+        $shortStates = @()
         foreach ($check in $checks) {
             $totalBytes += $check.Size
             if ($check.Received) {
@@ -94,13 +109,14 @@ while ($true) {
                 $completeFiles++
                 if (-not $check.Valid) { $allComplete = $false }
             } else { $allComplete = $false }
-            $statusParts += "$database/$snapshot $($check.Label):$($check.State)"
+            $shortStates += "$($check.Label)=$($check.State)"
         }
+        $databaseParts += "$database/$snapshot: " + ($shortStates -join ",")
     }
 
     $percent = if ($totalBytes -gt 0) { 100.0 * $receivedBytes / $totalBytes } else { 100.0 }
-    $status = ("[{0}] {1} | Прогресс: {2:N2}% | Файлов: {3}/{4} | Размер: {5}/{6}" -f (Get-Date -Format 'HH:mm:ss'), ($statusParts -join ' | '), $percent, $completeFiles, $totalFiles, (Format-Bytes $receivedBytes), (Format-Bytes $totalBytes))
-    Write-Host ([char]13 + $status.PadRight(240)) -NoNewline
+    $status = ("[{0}] {1} | {2:N2}% | {3}/{4} | {5}/{6}" -f (Get-Date -Format "HH:mm:ss"), ($databaseParts -join " | "), $percent, $completeFiles, $totalFiles, (Format-Bytes $receivedBytes), (Format-Bytes $totalBytes))
+    Write-Status $status
 
     if ($allComplete) {
         Write-Host ''
@@ -111,6 +127,5 @@ while ($true) {
         Write-Host ("Время: {0}" -f ((Get-Date) - $start))
         exit 0
     }
-
     Start-Sleep -Seconds 2
 }
