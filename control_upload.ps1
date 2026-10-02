@@ -1,4 +1,4 @@
-﻿# DumpFlow1c: версия файла — 2026-09-30 23:32
+# DumpFlow1c: версия файла — 2026-10-03 01:14
 #Requires -Version 5.1
 [CmdletBinding()]
 param(
@@ -30,31 +30,32 @@ function Test-File([string]$FilePath,[int64]$SizeBytes) {
     return ([int64](Get-Item -LiteralPath $FilePath).Length -eq $SizeBytes)
 }
 
-function Get-Md5([string]$FilePath) {
-    return (Get-FileHash -LiteralPath $FilePath -Algorithm MD5).Hash.ToUpperInvariant()
-}
-
-function Get-Sha256([string]$FilePath) {
-    return (Get-FileHash -LiteralPath $FilePath -Algorithm SHA256).Hash.ToUpperInvariant()
-}
+function Get-Md5([string]$FilePath) { return (Get-FileHash -LiteralPath $FilePath -Algorithm MD5).Hash.ToUpperInvariant() }
+function Get-Sha256([string]$FilePath) { return (Get-FileHash -LiteralPath $FilePath -Algorithm SHA256).Hash.ToUpperInvariant() }
 
 function Test-ShaSidecar([string]$ShaPath,[string]$ArchiveName,[string]$ExpectedHash) {
     if (-not (Test-Path -LiteralPath $ShaPath -PathType Leaf)) { return $false }
-
-    $line = @(Get-Content -LiteralPath $ShaPath -Encoding ASCII |
-        Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
-        Select-Object -First 1)
-
+    $line = @(Get-Content -LiteralPath $ShaPath -Encoding ASCII | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -First 1)
     if ($line.Count -eq 0) { return $false }
-
     $text = ([string]$line[0]).Trim()
     if ($text -notmatch '^([0-9A-Fa-f]{64})\s+(.+)$') { return $false }
-
     $actualHash = $matches[1]
     $actualName = $matches[2].Trim()
-
     if (-not $actualHash.Equals($ExpectedHash,[StringComparison]::OrdinalIgnoreCase)) { return $false }
     return $actualName -eq $ArchiveName
+}
+
+function Get-CheckState([string]$Label,[string]$Path,[int64]$Size,[string]$Kind,[string]$Hash,[string]$ArchiveName) {
+    if (-not (Test-File $Path $Size)) {
+        return [PSCustomObject]@{ Label=$Label; State='ожидание'; Size=$Size; Received=$false; Valid=$false }
+    }
+    $valid = switch ($Kind) {
+        'SHA256' { (Get-Sha256 $Path) -eq $Hash; break }
+        'MD5' { (Get-Md5 $Path) -eq $Hash; break }
+        'SIDECAR' { Test-ShaSidecar $Path $ArchiveName $Hash; break }
+        default { $false }
+    }
+    return [PSCustomObject]@{ Label=$Label; State=if ($valid) { 'OK' } else { 'HASH ERROR' }; Size=$Size; Received=$true; Valid=$valid }
 }
 
 Write-Host '------------------------------------------------------------'
@@ -73,77 +74,36 @@ while ($true) {
     $receivedBytes = [int64]0
     $completeFiles = 0
     $totalFiles = $expected.Count * 4
+    $statusParts = @()
 
     foreach ($item in $expected) {
         $database = [string]$item.Database
         $snapshot = [string]$item.SnapshotId
-        Write-Host ("[{0}] {1} / {2}" -f (Get-Date -Format 'HH:mm:ss'),$database,$snapshot)
 
         $checks = @(
-            [PSCustomObject]@{
-                Label='7z'
-                Path=(Join-Path $archiveDir $item.Archive.Name)
-                Size=[int64]$item.Archive.SizeBytes
-                Kind='SHA256'
-                Hash=[string]$item.Archive.SHA256
-            },
-            [PSCustomObject]@{
-                Label='SHA256'
-                Path=(Join-Path $archiveDir $item.ArchiveChecksum.Name)
-                Size=[int64]$item.ArchiveChecksum.SizeBytes
-                Kind='SIDECAR'
-                Hash=[string]$item.Archive.SHA256
-            },
-            [PSCustomObject]@{
-                Label='manifest'
-                Path=(Join-Path $archiveDir $item.Manifest.Name)
-                Size=[int64]$item.Manifest.SizeBytes
-                Kind='MD5'
-                Hash=[string]$item.Manifest.MD5
-            },
-            [PSCustomObject]@{
-                Label='changes'
-                Path=(Join-Path $archiveDir $item.Changes.Name)
-                Size=[int64]$item.Changes.SizeBytes
-                Kind='MD5'
-                Hash=[string]$item.Changes.MD5
-            }
+            (Get-CheckState '7z' (Join-Path $archiveDir $item.Archive.Name) ([int64]$item.Archive.SizeBytes) 'SHA256' ([string]$item.Archive.SHA256) ([string]$item.Archive.Name)),
+            (Get-CheckState 'SHA256' (Join-Path $archiveDir $item.ArchiveChecksum.Name) ([int64]$item.ArchiveChecksum.SizeBytes) 'SIDECAR' ([string]$item.Archive.SHA256) ([string]$item.Archive.Name)),
+            (Get-CheckState 'manifest' (Join-Path $archiveDir $item.Manifest.Name) ([int64]$item.Manifest.SizeBytes) 'MD5' ([string]$item.Manifest.MD5) ([string]$item.Archive.Name)),
+            (Get-CheckState 'changes' (Join-Path $archiveDir $item.Changes.Name) ([int64]$item.Changes.SizeBytes) 'MD5' ([string]$item.Changes.MD5) ([string]$item.Archive.Name))
         )
 
         foreach ($check in $checks) {
             $totalBytes += $check.Size
-
-            if (Test-File $check.Path $check.Size) {
+            if ($check.Received) {
                 $receivedBytes += $check.Size
                 $completeFiles++
-
-                $valid = switch ($check.Kind) {
-                    'SHA256' { (Get-Sha256 $check.Path) -eq $check.Hash; break }
-                    'MD5' { (Get-Md5 $check.Path) -eq $check.Hash; break }
-                    'SIDECAR' { Test-ShaSidecar $check.Path ([string]$item.Archive.Name) $check.Hash; break }
-                    default { $false }
-                }
-
-                $mark = if ($valid) { 'OK' } else { 'HASH ERROR' }
-                Write-Host ("  {0,-8} {1,-10} {2}" -f $check.Label,$mark,$check.Path)
-
-                if (-not $valid) { $allComplete = $false }
-            }
-            else {
-                Write-Host ("  {0,-8} {1}" -f $check.Label,'ожидание...')
-                $allComplete = $false
-            }
+                if (-not $check.Valid) { $allComplete = $false }
+            } else { $allComplete = $false }
+            $statusParts += "$database/$snapshot $($check.Label):$($check.State)"
         }
     }
 
     $percent = if ($totalBytes -gt 0) { 100.0 * $receivedBytes / $totalBytes } else { 100.0 }
-
-    Write-Host ''
-    Write-Host ("Прогресс: {0:N2}% | Файлов: {1}/{2} | Размер: {3}/{4}" -f
-        $percent,$completeFiles,$totalFiles,
-        (Format-Bytes $receivedBytes),(Format-Bytes $totalBytes))
+    $status = ("[{0}] {1} | Прогресс: {2:N2}% | Файлов: {3}/{4} | Размер: {5}/{6}" -f (Get-Date -Format 'HH:mm:ss'), ($statusParts -join ' | '), $percent, $completeFiles, $totalFiles, (Format-Bytes $receivedBytes), (Format-Bytes $totalBytes))
+    Write-Host ([char]13 + $status.PadRight(240)) -NoNewline
 
     if ($allComplete) {
+        Write-Host ''
         Write-Host ''
         Write-Host '============================================================'
         Write-Host 'CONTROL_UPLOAD: ПЕРЕДАЧА ЗАВЕРШЕНА УСПЕШНО'
