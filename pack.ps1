@@ -168,7 +168,7 @@ function Get-ArchiveForDatabase {
                     }
                 }
                 if (Test-Path -LiteralPath $sevenZipStderr -PathType Leaf) {
-                    $stderrText = Get-Content -LiteralPath $sevenZipStdout -Raw -ErrorAction SilentlyContinue
+                    $stderrText = Get-Content -LiteralPath $sevenZipStderr -Raw -ErrorAction SilentlyContinue
                     if ($stderrText -and -not [string]::IsNullOrWhiteSpace($stderrText)) {
                         $details += $stderrText
                     }
