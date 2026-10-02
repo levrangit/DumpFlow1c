@@ -1,4 +1,4 @@
-# DumpFlow1c: версия файла — 2026-10-02 23:23:02
+# DumpFlow1c: версия файла — 2026-10-02 23:58
 #Requires -Version 5.1
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -99,15 +99,15 @@ function Get-ArchiveForDatabase {
             try {
                 # 7-Zip запускается через cmd.exe. Его stdout/stderr направляются
                 # во временные файлы, а PowerShell только периодически читает файл
-                # прогресса. Это не блокирует выполнение из-за особенностей native
-                # stderr в PowerShell 5.1.
+                # прогресса. Обычный stdout не отключаем: 7-Zip может сообщать
+                # туда предупреждения и диагностику, особенно при коде возврата 1.
                 $argumentList = @(
                     'a',
                     '-t7z',
                     '-mx=5',
                     '-mmt=on',
                     '-bsp1',
-                    '-bso0',
+                    '-bso1',
                     ('"{0}"' -f $archivePath),
                     ('"@{0}"' -f $listPath),
                     '-scsUTF-8'
@@ -133,7 +133,7 @@ function Get-ArchiveForDatabase {
 
                     while (-not $process.HasExited) {
                         if (Test-Path -LiteralPath $sevenZipStdout -PathType Leaf) {
-                            $progressTextRaw = Get-Content -LiteralPath $sevenZipStdout -Raw -ErrorAction SilentlyContinue
+                            $progressTextRaw = Get-Content -LiteralPath $sevenZipStdout -Raw -Encoding Default -ErrorAction SilentlyContinue
                             if ($progressTextRaw) {
                                 $matches = [regex]::Matches($progressTextRaw, '(?<!\d)(\d{1,3})%(?!\d)')
                                 if ($matches.Count -gt 0) {
@@ -165,7 +165,7 @@ function Get-ArchiveForDatabase {
 
             # После завершения дочитываем последний процент и текст ошибки.
             if (Test-Path -LiteralPath $sevenZipStdout -PathType Leaf) {
-                $progressTextRaw = Get-Content -LiteralPath $sevenZipStdout -Raw -ErrorAction SilentlyContinue
+                $progressTextRaw = Get-Content -LiteralPath $sevenZipStdout -Raw -Encoding Default -ErrorAction SilentlyContinue
                 if ($progressTextRaw) {
                     $matches = [regex]::Matches($progressTextRaw, '(?<!\d)(\d{1,3})%(?!\d)')
                     if ($matches.Count -gt 0) {
@@ -189,13 +189,13 @@ function Get-ArchiveForDatabase {
                 Write-Step ("База {0}: 7-Zip завершился с ошибкой, читаю диагностический вывод." -f $DatabaseName)
                 $details = @()
                 if (Test-Path -LiteralPath $sevenZipStdout -PathType Leaf) {
-                    $stdoutText = Get-Content -LiteralPath $sevenZipStdout -Raw -ErrorAction SilentlyContinue
+                    $stdoutText = Get-Content -LiteralPath $sevenZipStdout -Raw -Encoding Default -ErrorAction SilentlyContinue
                     if ($stdoutText -and -not [string]::IsNullOrWhiteSpace($stdoutText)) {
                         $details += $stdoutText
                     }
                 }
                 if (Test-Path -LiteralPath $sevenZipStderr -PathType Leaf) {
-                    $stderrText = Get-Content -LiteralPath $sevenZipStderr -Raw -ErrorAction SilentlyContinue
+                    $stderrText = Get-Content -LiteralPath $sevenZipStderr -Raw -Encoding Default -ErrorAction SilentlyContinue
                     if ($stderrText -and -not [string]::IsNullOrWhiteSpace($stderrText)) {
                         $details += $stderrText
                     }
