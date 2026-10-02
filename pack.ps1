@@ -1,4 +1,4 @@
-﻿# DumpFlow1c: версия файла — 2026-10-02 23:16
+﻿# DumpFlow1c: версия файла — 2026-10-02 23:17
 #Requires -Version 5.1
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -107,7 +107,7 @@ function Get-ArchiveForDatabase {
 
                     while (-not $process.HasExited) {
                         if (Test-Path -LiteralPath $sevenZipStderr -PathType Leaf) {
-                            $progressTextRaw = Get-Content -LiteralPath $sevenZipStderr -Raw -ErrorAction SilentlyContinue
+                            $progressTextRaw = Get-Content -LiteralPath $sevenZipStdout -Raw -ErrorAction SilentlyContinue
                             if ($progressTextRaw) {
                                 $matches = [regex]::Matches($progressTextRaw, '(?<!\d)(\d{1,3})%(?!\d)')
                                 if ($matches.Count -gt 0) {
@@ -139,7 +139,7 @@ function Get-ArchiveForDatabase {
 
             # После завершения дочитываем последний процент и текст ошибки.
             if (Test-Path -LiteralPath $sevenZipStderr -PathType Leaf) {
-                $progressTextRaw = Get-Content -LiteralPath $sevenZipStderr -Raw -ErrorAction SilentlyContinue
+                $progressTextRaw = Get-Content -LiteralPath $sevenZipStdout -Raw -ErrorAction SilentlyContinue
                 if ($progressTextRaw) {
                     $matches = [regex]::Matches($progressTextRaw, '(?<!\d)(\d{1,3})%(?!\d)')
                     if ($matches.Count -gt 0) {
@@ -168,7 +168,7 @@ function Get-ArchiveForDatabase {
                     }
                 }
                 if (Test-Path -LiteralPath $sevenZipStderr -PathType Leaf) {
-                    $stderrText = Get-Content -LiteralPath $sevenZipStderr -Raw -ErrorAction SilentlyContinue
+                    $stderrText = Get-Content -LiteralPath $sevenZipStdout -Raw -ErrorAction SilentlyContinue
                     if ($stderrText -and -not [string]::IsNullOrWhiteSpace($stderrText)) {
                         $details += $stderrText
                     }
