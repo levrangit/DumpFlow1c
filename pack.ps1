@@ -1,4 +1,4 @@
-# DumpFlow1c: версия файла — 2026-10-03 00:13
+# DumpFlow1c: версия файла — 2026-10-03 00:25
 #Requires -Version 5.1
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -95,17 +95,12 @@ function Get-ArchiveForDatabase {
 
     try {
         Write-Step ("База {0}: подготовка временных файлов и списка архивации." -f $DatabaseName)
-        $sevenZipStdout = Join-Path $archiveDir ('.7za_stdout_' + [guid]::NewGuid().ToString('N') + '.tmp')
-        $sevenZipStderr = Join-Path $archiveDir ('.7za_stderr_' + [guid]::NewGuid().ToString('N') + '.tmp')
 
         if ($transferFiles.Count -gt 0) {
             $lines = @($transferFiles | ForEach-Object { [string]$_.RelativePath })
             $lines | Set-Content -LiteralPath $listPath -Encoding UTF8
             Write-Step ("База {0}: список файлов создан." -f $DatabaseName)
             Write-Step ("База {0}: запускаю локальный 7-Zip, далее будет отображаться прогресс." -f $DatabaseName)
-
-            $lastPercent = -1
-            $lastProgressText = ''
 
             Push-Location $dumpPath
             try {
@@ -115,101 +110,22 @@ function Get-ArchiveForDatabase {
                     '-mx=5',
                     '-mmt=on',
                     '-bsp1',
-                    '-bso1',
-                    ('"{0}"' -f $archivePath),
-                    ('"@{0}"' -f $listPath),
+                    $archivePath,
+                    ('@' + $listPath),
                     '-scsUTF-8'
                 )
 
-                $sevenZipCommand = '"{0}" {1}' -f $sevenZip, ($argumentList -join ' ')
-                $cmdArguments = '/d /c {0} 1>"{1}" 2>"{2}"' -f $sevenZipCommand, $sevenZipStdout, $sevenZipStderr
-
-                $psi = New-Object System.Diagnostics.ProcessStartInfo
-                $psi.FileName = $env:ComSpec
-                $psi.Arguments = $cmdArguments
-                $psi.WorkingDirectory = $dumpPath
-                $psi.UseShellExecute = $false
-                $psi.CreateNoWindow = $true
-                $psi.RedirectStandardOutput = $false
-                $psi.RedirectStandardError = $false
-
-                $process = New-Object System.Diagnostics.Process
-                $process.StartInfo = $psi
-
-                try {
-                    [void]$process.Start()
-
-                    while (-not $process.HasExited) {
-                        if (Test-Path -LiteralPath $sevenZipStdout -PathType Leaf) {
-                            $progressTextRaw = Get-Content -LiteralPath $sevenZipStdout -Raw -Encoding Default -ErrorAction SilentlyContinue
-                            if ($progressTextRaw) {
-                                $matches = [regex]::Matches($progressTextRaw, '(?<!\d)(\d{1,3})%(?!\d)')
-                                if ($matches.Count -gt 0) {
-                                    $match = $matches[$matches.Count - 1]
-                                    $percent = [int]$match.Groups[1].Value
-                                    if ($percent -ne $lastPercent) {
-                                        $lastPercent = $percent
-                                        $progressText = ("  Архивация {0}: {1,3}%" -f $DatabaseName, $percent)
-                                        Write-Host (([char]13) + $progressText.PadRight($lastProgressText.Length)) -NoNewline
-                                        $lastProgressText = $progressText
-                                    }
-                                }
-                            }
-                        }
-
-                        Start-Sleep -Milliseconds 200
-                    }
-
-                    $process.WaitForExit()
-                    $rc = $process.ExitCode
-                }
-                finally {
-                    $process.Dispose()
-                }
+                # Запускаем 7-Zip напрямую, без cmd.exe и перенаправления stdout/stderr.
+                # -bsp1 выводит прогресс в одну строку с возвратом каретки.
+                & $sevenZip @argumentList
+                $rc = $LASTEXITCODE
             }
             finally {
                 Pop-Location
             }
 
-            if (Test-Path -LiteralPath $sevenZipStdout -PathType Leaf) {
-                $progressTextRaw = Get-Content -LiteralPath $sevenZipStdout -Raw -Encoding Default -ErrorAction SilentlyContinue
-                if ($progressTextRaw) {
-                    $matches = [regex]::Matches($progressTextRaw, '(?<!\d)(\d{1,3})%(?!\d)')
-                    if ($matches.Count -gt 0) {
-                        $match = $matches[$matches.Count - 1]
-                        $percent = [int]$match.Groups[1].Value
-                        if ($percent -ne $lastPercent) {
-                            $lastPercent = $percent
-                            $progressText = ("  Архивация {0}: {1,3}%" -f $DatabaseName, $percent)
-                            Write-Host (([char]13) + $progressText.PadRight($lastProgressText.Length)) -NoNewline
-                            $lastProgressText = $progressText
-                        }
-                    }
-                }
-            }
-
-            if ($lastProgressText.Length -gt 0) {
-                Write-Host ""
-            }
-
             if ($rc -ne 0) {
-                Write-Step ("База {0}: 7-Zip завершился с ошибкой, читаю диагностический вывод." -f $DatabaseName)
-                $details = @()
-                if (Test-Path -LiteralPath $sevenZipStdout -PathType Leaf) {
-                    $stdoutText = Get-Content -LiteralPath $sevenZipStdout -Raw -Encoding Default -ErrorAction SilentlyContinue
-                    if ($stdoutText -and -not [string]::IsNullOrWhiteSpace($stdoutText)) {
-                        $details += $stdoutText
-                    }
-                }
-                if (Test-Path -LiteralPath $sevenZipStderr -PathType Leaf) {
-                    $stderrText = Get-Content -LiteralPath $sevenZipStderr -Raw -Encoding Default -ErrorAction SilentlyContinue
-                    if ($stderrText -and -not [string]::IsNullOrWhiteSpace($stderrText)) {
-                        $details += $stderrText
-                    }
-                }
-                if ($details.Count -eq 0) { $details = @('7-Zip не вернул текст ошибки.') }
-                $details = (($details -join [Environment]::NewLine).Trim())
-                throw ("7za завершился с кодом {0} для {1}: {2}" -f $rc, $DatabaseName, $details)
+                throw ("7za завершился с кодом {0} для {1}. Вывод 7-Zip приведён выше." -f $rc, $DatabaseName)
             }
         }
         else {
