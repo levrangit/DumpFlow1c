@@ -1,4 +1,4 @@
-# DumpFlow1c: версия файла — 2026-10-03 01:20
+# DumpFlow1c: версия файла — 2026-10-03 01:25
 #Requires -Version 5.1
 [CmdletBinding()]
 param(
@@ -59,19 +59,10 @@ function Get-CheckState([string]$Label,[string]$Path,[int64]$Size,[string]$Kind,
 }
 
 function Write-Status([string]$Text) {
-    $width = [Console]::WindowWidth
-    if ($width -lt 20) { $width = 120 }
-    $maxLength = $width - 1
-    if ($Text.Length -gt $maxLength) { $Text = $Text.Substring(0, $maxLength) }
-    try {
-        [Console]::SetCursorPosition(0, [Console]::CursorTop)
-        [Console]::Write((' ' * $maxLength))
-        [Console]::SetCursorPosition(0, [Console]::CursorTop)
-        [Console]::Write($Text)
-    }
-    catch {
-        Write-Host ("`r" + $Text) -NoNewline
-    }
+    # ANSI: очистить текущую строку и вернуть курсор в ее начало.
+    $esc = [char]27
+    $sequence = "$esc[2K$esc[1G$Text"
+    [Console]::Write($sequence)
 }
 
 Write-Host '------------------------------------------------------------'
