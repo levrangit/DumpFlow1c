@@ -1,4 +1,4 @@
-﻿# DumpFlow1c: версия файла — 2026-10-02 21:11
+﻿# DumpFlow1c: версия файла — 2026-10-02 23:16
 #Requires -Version 5.1
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -68,14 +68,13 @@ function Get-ArchiveForDatabase {
 
             $lastPercent = -1
             $lastProgressText = ''
-            $sevenZipStderrLines = New-Object System.Collections.Generic.List[string]
 
             Push-Location $dumpPath
             try {
-                # 7-Zip пишет прогресс в stderr. Не запускаем его напрямую через
-                # оператор &, потому что PowerShell 5.1 превращает native stderr
-                # в NativeCommandError. Используем System.Diagnostics.Process,
-                # чтобы читать stderr как обычный поток и показывать только проценты.
+                # 7-Zip запускается через cmd.exe. Его stdout/stderr направляются
+                # во временные файлы, а PowerShell только периодически читает файл
+                # прогресса. Это не блокирует выполнение из-за особенностей native
+                # stderr в PowerShell 5.1.
                 $argumentList = @(
                     'a',
                     '-t7z',
@@ -88,14 +87,17 @@ function Get-ArchiveForDatabase {
                     '-scsUTF-8'
                 )
 
+                $sevenZipCommand = '"{0}" {1}' -f $sevenZip, ($argumentList -join ' ')
+                $cmdArguments = '/d /c {0} 1>"{1}" 2>"{2}"' -f $sevenZipCommand, $sevenZipStdout, $sevenZipStderr
+
                 $psi = New-Object System.Diagnostics.ProcessStartInfo
-                $psi.FileName = $sevenZip
-                $psi.Arguments = ($argumentList -join ' ')
+                $psi.FileName = $env:ComSpec
+                $psi.Arguments = $cmdArguments
                 $psi.WorkingDirectory = $dumpPath
                 $psi.UseShellExecute = $false
                 $psi.CreateNoWindow = $true
-                $psi.RedirectStandardOutput = $true
-                $psi.RedirectStandardError = $true
+                $psi.RedirectStandardOutput = $false
+                $psi.RedirectStandardError = $false
 
                 $process = New-Object System.Diagnostics.Process
                 $process.StartInfo = $psi
@@ -103,56 +105,27 @@ function Get-ArchiveForDatabase {
                 try {
                     [void]$process.Start()
 
-                    # При -bso0 stdout практически пуст. Сначала читаем stderr,
-                    # где находится живой индикатор -bsp1.
                     while (-not $process.HasExited) {
-                        $line = $process.StandardError.ReadLine()
-                        if ($null -eq $line) {
-                            Start-Sleep -Milliseconds 20
-                            continue
-                        }
-
-                        $sevenZipStderrLines.Add([string]$line)
-
-                        $match = [regex]::Match([string]$line, '(?<!\d)(\d{1,3})%(?!\d)')
-                        if ($match.Success) {
-                            $percent = [int]$match.Groups[1].Value
-                            if ($percent -ne $lastPercent) {
-                                $lastPercent = $percent
-                                $progressText = ("  Архивация {0}: {1,3}%" -f $DatabaseName, $percent)
-                                Write-Host (([char]13) + $progressText.PadRight($lastProgressText.Length)) -NoNewline
-                                $lastProgressText = $progressText
+                        if (Test-Path -LiteralPath $sevenZipStderr -PathType Leaf) {
+                            $progressTextRaw = Get-Content -LiteralPath $sevenZipStderr -Raw -ErrorAction SilentlyContinue
+                            if ($progressTextRaw) {
+                                $matches = [regex]::Matches($progressTextRaw, '(?<!\d)(\d{1,3})%(?!\d)')
+                                if ($matches.Count -gt 0) {
+                                    $match = $matches[$matches.Count - 1]
+                                    $percent = [int]$match.Groups[1].Value
+                                    if ($percent -ne $lastPercent) {
+                                        $lastPercent = $percent
+                                        $progressText = ("  Архивация {0}: {1,3}%" -f $DatabaseName, $percent)
+                                        Write-Host (([char]13) + $progressText.PadRight($lastProgressText.Length)) -NoNewline
+                                        $lastProgressText = $progressText
+                                    }
+                                }
                             }
-                        } elseif ($line -match 'ERROR|Error|error|WARNING|Warning|warning|Command Line Error') {
-                            Write-Host (([char]13) + $line.PadRight($lastProgressText.Length))
-                            $lastProgressText = ''
                         }
+
+                        Start-Sleep -Milliseconds 200
                     }
 
-                    # Забираем остаток stderr после завершения процесса.
-                    while (-not $process.StandardError.EndOfStream) {
-                        $line = $process.StandardError.ReadLine()
-                        if ($null -eq $line) { break }
-
-                        $sevenZipStderrLines.Add([string]$line)
-
-                        $match = [regex]::Match([string]$line, '(?<!\d)(\d{1,3})%(?!\d)')
-                        if ($match.Success) {
-                            $percent = [int]$match.Groups[1].Value
-                            if ($percent -ne $lastPercent) {
-                                $lastPercent = $percent
-                                $progressText = ("  Архивация {0}: {1,3}%" -f $DatabaseName, $percent)
-                                Write-Host (([char]13) + $progressText.PadRight($lastProgressText.Length)) -NoNewline
-                                $lastProgressText = $progressText
-                            }
-                        } elseif ($line -match 'ERROR|Error|error|WARNING|Warning|warning|Command Line Error') {
-                            Write-Host (([char]13) + $line.PadRight($lastProgressText.Length))
-                            $lastProgressText = ''
-                        }
-                    }
-
-                    # stdout нужен только для диагностики, если 7-Zip вернул ошибку.
-                    $sevenZipStdoutText = $process.StandardOutput.ReadToEnd()
                     $process.WaitForExit()
                     $rc = $process.ExitCode
                 }
@@ -164,17 +137,41 @@ function Get-ArchiveForDatabase {
                 Pop-Location
             }
 
+            # После завершения дочитываем последний процент и текст ошибки.
+            if (Test-Path -LiteralPath $sevenZipStderr -PathType Leaf) {
+                $progressTextRaw = Get-Content -LiteralPath $sevenZipStderr -Raw -ErrorAction SilentlyContinue
+                if ($progressTextRaw) {
+                    $matches = [regex]::Matches($progressTextRaw, '(?<!\d)(\d{1,3})%(?!\d)')
+                    if ($matches.Count -gt 0) {
+                        $match = $matches[$matches.Count - 1]
+                        $percent = [int]$match.Groups[1].Value
+                        if ($percent -ne $lastPercent) {
+                            $lastPercent = $percent
+                            $progressText = ("  Архивация {0}: {1,3}%" -f $DatabaseName, $percent)
+                            Write-Host (([char]13) + $progressText.PadRight($lastProgressText.Length)) -NoNewline
+                            $lastProgressText = $progressText
+                        }
+                    }
+                }
+            }
+
             if ($lastProgressText.Length -gt 0) {
                 Write-Host ""
             }
 
             if ($rc -ne 0) {
                 $details = @()
-                if ($sevenZipStdoutText -and -not [string]::IsNullOrWhiteSpace($sevenZipStdoutText)) {
-                    $details += $sevenZipStdoutText
+                if (Test-Path -LiteralPath $sevenZipStdout -PathType Leaf) {
+                    $stdoutText = Get-Content -LiteralPath $sevenZipStdout -Raw -ErrorAction SilentlyContinue
+                    if ($stdoutText -and -not [string]::IsNullOrWhiteSpace($stdoutText)) {
+                        $details += $stdoutText
+                    }
                 }
-                if ($sevenZipStderrLines.Count -gt 0) {
-                    $details += ($sevenZipStderrLines -join [Environment]::NewLine)
+                if (Test-Path -LiteralPath $sevenZipStderr -PathType Leaf) {
+                    $stderrText = Get-Content -LiteralPath $sevenZipStderr -Raw -ErrorAction SilentlyContinue
+                    if ($stderrText -and -not [string]::IsNullOrWhiteSpace($stderrText)) {
+                        $details += $stderrText
+                    }
                 }
                 if ($details.Count -eq 0) { $details = @('7-Zip не вернул текст ошибки.') }
                 $details = (($details -join [Environment]::NewLine).Trim())
