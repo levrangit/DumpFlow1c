@@ -1,4 +1,4 @@
-# DumpFlow1c: версия файла — 2026-10-02 23:58
+# DumpFlow1c: версия файла — 2026-10-03 00:01
 #Requires -Version 5.1
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -16,14 +16,13 @@ if ([string]::IsNullOrWhiteSpace($mcpWork)) { throw 'В terminal JSON не за�
 $dumpRoot = Join-Path (Join-Path $mcpWork 'dump') $projectName
 $metadataRoot = Join-Path (Join-Path $mcpWork 'metadata') $projectName
 $archiveDir = Join-Path $mcpWork 'archive'
-$sevenZip = Join-Path (Join-Path $root 'tools') '7za.exe'
 
-if (-not (Test-Path -LiteralPath $sevenZip -PathType Leaf)) { throw "Не найден 7za.exe: $sevenZip" }
-New-Item -ItemType Directory -Force -Path $archiveDir | Out-Null
+$sevenZipSource = Join-Path (Join-Path $root 'tools') '7za.exe'
+$localToolsDir = Join-Path $mcpWork 'tools'
+$sevenZip = Join-Path $localToolsDir '7za.exe'
 
-function Write-Step([string]$Text) {
-    Write-Host ("[PACK] {0}" -f $Text)
-}
+New-Item -ItemType Directory -Force -Path $localToolsDir | Out-Null
+if (-not (Test-Path -LiteralPath $sevenZipSource -PathType Leaf)) { throw "Не найден исходный 7za.exe: $sevenZipSource" }
 
 Write-Host ''
 Write-Host '============================================================'
@@ -34,6 +33,19 @@ Write-Step ("Проект: {0}" -f $projectName)
 Write-Step ("Рабочий каталог MCP: {0}" -f $mcpWork)
 Write-Step ("Каталог dump: {0}" -f $dumpRoot)
 Write-Step ("Каталог archive: {0}" -f $archiveDir)
+Write-Step ("Источник 7-Zip: {0}" -f $sevenZipSource)
+Write-Step ("Локальный 7-Zip: {0}" -f $sevenZip)
+
+Write-Step 'Копирую 7-Zip с RDP-диска в локальный каталог MCP.'
+Copy-Item -LiteralPath $sevenZipSource -Destination $sevenZip -Force
+if (-not (Test-Path -LiteralPath $sevenZip -PathType Leaf)) { throw "Не удалось скопировать 7za.exe: $sevenZip" }
+Write-Step '7-Zip скопирован локально.'
+
+New-Item -ItemType Directory -Force -Path $archiveDir | Out-Null
+
+function Write-Step([string]$Text) {
+    Write-Host ("[PACK] {0}" -f $Text)
+}
 
 function Get-Hash([string]$Path) {
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -90,17 +102,13 @@ function Get-ArchiveForDatabase {
             $lines = @($transferFiles | ForEach-Object { [string]$_.RelativePath })
             $lines | Set-Content -LiteralPath $listPath -Encoding UTF8
             Write-Step ("База {0}: список файлов создан." -f $DatabaseName)
-            Write-Step ("База {0}: запускаю 7-Zip, далее будет отображаться прогресс." -f $DatabaseName)
+            Write-Step ("База {0}: запускаю локальный 7-Zip, далее будет отображаться прогресс." -f $DatabaseName)
 
             $lastPercent = -1
             $lastProgressText = ''
 
             Push-Location $dumpPath
             try {
-                # 7-Zip запускается через cmd.exe. Его stdout/stderr направляются
-                # во временные файлы, а PowerShell только периодически читает файл
-                # прогресса. Обычный stdout не отключаем: 7-Zip может сообщать
-                # туда предупреждения и диагностику, особенно при коде возврата 1.
                 $argumentList = @(
                     'a',
                     '-t7z',
@@ -163,7 +171,6 @@ function Get-ArchiveForDatabase {
                 Pop-Location
             }
 
-            # После завершения дочитываем последний процент и текст ошибки.
             if (Test-Path -LiteralPath $sevenZipStdout -PathType Leaf) {
                 $progressTextRaw = Get-Content -LiteralPath $sevenZipStdout -Raw -Encoding Default -ErrorAction SilentlyContinue
                 if ($progressTextRaw) {
@@ -207,7 +214,6 @@ function Get-ArchiveForDatabase {
         }
         else {
             Write-Step ("База {0}: изменений для упаковки нет, создаю корректный пустой 7z." -f $DatabaseName)
-            # Создаём корректный пустой 7z: временно добавляем маркер и сразу удаляем его из архива.
             $emptyMarker = Join-Path $archiveDir ('.empty_' + [guid]::NewGuid().ToString('N') + '.txt')
             Set-Content -LiteralPath $emptyMarker -Value 'empty' -Encoding ASCII
             & $sevenZip a -t7z -mx=5 -mmt=on -bsp0 -bso0 $archivePath $emptyMarker > $sevenZipStdout 2> $sevenZipStderr
@@ -251,7 +257,6 @@ function Get-ArchiveForDatabase {
         Write-Host "SHA-256: $sha256"
 
         Write-Step ("База {0}: копирую manifest и changes в archive." -f $DatabaseName)
-        # В archive лежит полный транспортный комплект версии.
         Copy-Item -LiteralPath $manifestPath -Destination (Join-Path $archiveDir $manifestName) -Force
         Copy-Item -LiteralPath $changesPath -Destination (Join-Path $archiveDir ([IO.Path]::GetFileName($changesPath))) -Force
 
