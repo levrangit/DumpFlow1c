@@ -1,4 +1,4 @@
-﻿# DumpFlow1c: версия файла — 2026-10-02 23:17
+# DumpFlow1c: версия файла — 2026-10-02 23:23:02
 #Requires -Version 5.1
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -21,6 +21,20 @@ $sevenZip = Join-Path (Join-Path $root 'tools') '7za.exe'
 if (-not (Test-Path -LiteralPath $sevenZip -PathType Leaf)) { throw "Не найден 7za.exe: $sevenZip" }
 New-Item -ItemType Directory -Force -Path $archiveDir | Out-Null
 
+function Write-Step([string]$Text) {
+    Write-Host ("[PACK] {0}" -f $Text)
+}
+
+Write-Host ''
+Write-Host '============================================================'
+Write-Host 'СТАРТ АРХИВАЦИИ'
+Write-Host '============================================================'
+Write-Step ("Терминал: {0}" -f $computer)
+Write-Step ("Проект: {0}" -f $projectName)
+Write-Step ("Рабочий каталог MCP: {0}" -f $mcpWork)
+Write-Step ("Каталог dump: {0}" -f $dumpRoot)
+Write-Step ("Каталог archive: {0}" -f $archiveDir)
+
 function Get-Hash([string]$Path) {
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
 }
@@ -32,24 +46,33 @@ function Get-ArchiveForDatabase {
     $changesFiles = @(Get-ChildItem -LiteralPath $metadataDir -Filter ("changes_{0}_*.json" -f $DatabaseName) -File | Sort-Object Name -Descending)
     if ($changesFiles.Count -eq 0) { throw "Не найден changes.json для $DatabaseName в $metadataDir" }
 
+    Write-Step ("База {0}: найден последний changes-файл." -f $DatabaseName)
     $changesPath = $changesFiles[0].FullName
+    Write-Step ("База {0}: читаю changes: {1}" -f $DatabaseName, $changesFiles[0].Name)
     $changes = Get-Content -Raw -LiteralPath $changesPath -Encoding UTF8 | ConvertFrom-Json
     $snapshotId = [string]$changes.SnapshotId
     if ([string]::IsNullOrWhiteSpace($snapshotId)) { throw "В changes отсутствует SnapshotId: $changesPath" }
 
     $manifestName = [string]$changes.CurrentManifest
     if ([string]::IsNullOrWhiteSpace($manifestName)) { throw "В changes отсутствует CurrentManifest: $changesPath" }
+    Write-Step ("База {0}: SnapshotId = {1}" -f $DatabaseName, $snapshotId)
     $manifestPath = Join-Path $metadataDir $manifestName
     if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw "Не найден manifest: $manifestPath" }
 
+    Write-Step ("База {0}: проверяю manifest и dump." -f $DatabaseName)
     $dumpPath = Join-Path $dumpRoot $DatabaseName
     if (-not (Test-Path -LiteralPath $dumpPath -PathType Container)) { throw "Не найден dump: $dumpPath" }
 
     $archivePath = Join-Path $archiveDir ("{0}_{1}.7z" -f $DatabaseName,$snapshotId)
-    if (Test-Path -LiteralPath $archivePath) { Remove-Item -LiteralPath $archivePath -Force }
+    if (Test-Path -LiteralPath $archivePath) {
+        Write-Step ("База {0}: удаляю существующий архив перед пересозданием: {1}" -f $DatabaseName, $archivePath)
+        Remove-Item -LiteralPath $archivePath -Force
+    }
     $listPath = Join-Path $archiveDir ('.files_' + [guid]::NewGuid().ToString('N') + '.txt')
 
     $transferFiles = @($changes.Files | Where-Object { $_.Action -in @('ADDED','MODIFIED') })
+    Write-Step ("База {0}: к упаковке файлов = {1}; удалённых файлов = {2}." -f $DatabaseName, $transferFiles.Count, [int]$changes.DeletedCount)
+    Write-Step ("База {0}: проверяю наличие всех файлов в текущем dump." -f $DatabaseName)
     foreach ($item in $transferFiles) {
         $relative = [string]$item.RelativePath
         $source = Join-Path $dumpPath ($relative -replace '/','\')
@@ -59,12 +82,15 @@ function Get-ArchiveForDatabase {
     }
 
     try {
+        Write-Step ("База {0}: подготовка временных файлов и списка архивации." -f $DatabaseName)
         $sevenZipStdout = Join-Path $archiveDir ('.7za_stdout_' + [guid]::NewGuid().ToString('N') + '.tmp')
         $sevenZipStderr = Join-Path $archiveDir ('.7za_stderr_' + [guid]::NewGuid().ToString('N') + '.tmp')
 
         if ($transferFiles.Count -gt 0) {
             $lines = @($transferFiles | ForEach-Object { [string]$_.RelativePath })
             $lines | Set-Content -LiteralPath $listPath -Encoding UTF8
+            Write-Step ("База {0}: список файлов создан." -f $DatabaseName)
+            Write-Step ("База {0}: запускаю 7-Zip, далее будет отображаться прогресс." -f $DatabaseName)
 
             $lastPercent = -1
             $lastProgressText = ''
@@ -106,7 +132,7 @@ function Get-ArchiveForDatabase {
                     [void]$process.Start()
 
                     while (-not $process.HasExited) {
-                        if (Test-Path -LiteralPath $sevenZipStderr -PathType Leaf) {
+                        if (Test-Path -LiteralPath $sevenZipStdout -PathType Leaf) {
                             $progressTextRaw = Get-Content -LiteralPath $sevenZipStdout -Raw -ErrorAction SilentlyContinue
                             if ($progressTextRaw) {
                                 $matches = [regex]::Matches($progressTextRaw, '(?<!\d)(\d{1,3})%(?!\d)')
@@ -138,7 +164,7 @@ function Get-ArchiveForDatabase {
             }
 
             # После завершения дочитываем последний процент и текст ошибки.
-            if (Test-Path -LiteralPath $sevenZipStderr -PathType Leaf) {
+            if (Test-Path -LiteralPath $sevenZipStdout -PathType Leaf) {
                 $progressTextRaw = Get-Content -LiteralPath $sevenZipStdout -Raw -ErrorAction SilentlyContinue
                 if ($progressTextRaw) {
                     $matches = [regex]::Matches($progressTextRaw, '(?<!\d)(\d{1,3})%(?!\d)')
@@ -160,6 +186,7 @@ function Get-ArchiveForDatabase {
             }
 
             if ($rc -ne 0) {
+                Write-Step ("База {0}: 7-Zip завершился с ошибкой, читаю диагностический вывод." -f $DatabaseName)
                 $details = @()
                 if (Test-Path -LiteralPath $sevenZipStdout -PathType Leaf) {
                     $stdoutText = Get-Content -LiteralPath $sevenZipStdout -Raw -ErrorAction SilentlyContinue
@@ -179,6 +206,7 @@ function Get-ArchiveForDatabase {
             }
         }
         else {
+            Write-Step ("База {0}: изменений для упаковки нет, создаю корректный пустой 7z." -f $DatabaseName)
             # Создаём корректный пустой 7z: временно добавляем маркер и сразу удаляем его из архива.
             $emptyMarker = Join-Path $archiveDir ('.empty_' + [guid]::NewGuid().ToString('N') + '.txt')
             Set-Content -LiteralPath $emptyMarker -Value 'empty' -Encoding ASCII
@@ -209,6 +237,7 @@ function Get-ArchiveForDatabase {
 
         if (-not (Test-Path -LiteralPath $archivePath -PathType Leaf)) { throw "Архив не создан: $archivePath" }
 
+        Write-Step ("База {0}: архив создан, рассчитываю SHA-256." -f $DatabaseName)
         $sha256 = Get-Hash $archivePath
         $shaPath = $archivePath + '.sha256'
         ($sha256 + '  ' + [IO.Path]::GetFileName($archivePath)) | Set-Content -LiteralPath $shaPath -Encoding ASCII
@@ -221,10 +250,12 @@ function Get-ArchiveForDatabase {
         Write-Host ("Размер: {0:N0} байт" -f $archiveSize)
         Write-Host "SHA-256: $sha256"
 
+        Write-Step ("База {0}: копирую manifest и changes в archive." -f $DatabaseName)
         # В archive лежит полный транспортный комплект версии.
         Copy-Item -LiteralPath $manifestPath -Destination (Join-Path $archiveDir $manifestName) -Force
         Copy-Item -LiteralPath $changesPath -Destination (Join-Path $archiveDir ([IO.Path]::GetFileName($changesPath))) -Force
 
+        Write-Step ("База {0}: упаковка завершена успешно." -f $DatabaseName)
         return [PSCustomObject]@{
             Database = $DatabaseName
             SnapshotId = $snapshotId
@@ -248,7 +279,9 @@ $dbFiles = @(Get-ChildItem -LiteralPath $dbDir -Filter '*.json' -File | Sort-Obj
 if ($dbFiles.Count -eq 0) { throw "В каталоге нет JSON баз: $dbDir" }
 
 $results = New-Object System.Collections.Generic.List[object]
+Write-Step ("Найдено баз для архивации: {0}" -f $dbFiles.Count)
 foreach ($dbFile in $dbFiles) {
+    Write-Step ("Переходим к базе из конфигурации: {0}" -f $dbFile.Name)
     $db = Get-Content -Raw -LiteralPath $dbFile.FullName -Encoding UTF8 | ConvertFrom-Json
     $id = [string]$db.db_source_id
     $results.Add((Get-ArchiveForDatabase -DatabaseName $id))
