@@ -102,7 +102,7 @@ while ($true) {
             } else { $allComplete = $false }
             $shortStates += "$($check.Label)=$($check.State)"
         }
-        $databaseParts += "$database/$snapshot: " + ($shortStates -join ",")
+        $databaseParts += "${database}/${snapshot}: " + ($shortStates -join ",")
     }
 
     $percent = if ($totalBytes -gt 0) { 100.0 * $receivedBytes / $totalBytes } else { 100.0 }
