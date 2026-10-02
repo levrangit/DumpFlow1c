@@ -1,4 +1,4 @@
-﻿# DumpFlow1c: версия файла — 2026-10-02 14:00
+﻿# DumpFlow1c: версия файла — 2026-10-02 21:11
 #Requires -Version 5.1
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -52,7 +52,7 @@ function Get-ArchiveForDatabase {
     $transferFiles = @($changes.Files | Where-Object { $_.Action -in @('ADDED','MODIFIED') })
     foreach ($item in $transferFiles) {
         $relative = [string]$item.RelativePath
-        $source = Join-Path $dumpPath ($relative -replace '/','')
+        $source = Join-Path $dumpPath ($relative -replace '/','\')
         if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
             throw "Файл из changes отсутствует в dump: $relative"
         }
@@ -72,6 +72,10 @@ function Get-ArchiveForDatabase {
 
             Push-Location $dumpPath
             try {
+                # 7-Zip пишет прогресс в stderr. Не запускаем его напрямую через
+                # оператор &, потому что PowerShell 5.1 превращает native stderr
+                # в NativeCommandError. Используем System.Diagnostics.Process,
+                # чтобы читать stderr как обычный поток и показывать только проценты.
                 $argumentList = @(
                     'a',
                     '-t7z',
@@ -99,6 +103,8 @@ function Get-ArchiveForDatabase {
                 try {
                     [void]$process.Start()
 
+                    # При -bso0 stdout практически пуст. Сначала читаем stderr,
+                    # где находится живой индикатор -bsp1.
                     while (-not $process.HasExited) {
                         $line = $process.StandardError.ReadLine()
                         if ($null -eq $line) {
@@ -108,7 +114,7 @@ function Get-ArchiveForDatabase {
 
                         $sevenZipStderrLines.Add([string]$line)
 
-                        $match = [regex]::Match([string]$line, '(?<!d)(d{1,3})%(?!d)')
+                        $match = [regex]::Match([string]$line, '(?<!\d)(\d{1,3})%(?!\d)')
                         if ($match.Success) {
                             $percent = [int]$match.Groups[1].Value
                             if ($percent -ne $lastPercent) {
@@ -123,13 +129,14 @@ function Get-ArchiveForDatabase {
                         }
                     }
 
+                    # Забираем остаток stderr после завершения процесса.
                     while (-not $process.StandardError.EndOfStream) {
                         $line = $process.StandardError.ReadLine()
                         if ($null -eq $line) { break }
 
                         $sevenZipStderrLines.Add([string]$line)
 
-                        $match = [regex]::Match([string]$line, '(?<!d)(d{1,3})%(?!d)')
+                        $match = [regex]::Match([string]$line, '(?<!\d)(\d{1,3})%(?!\d)')
                         if ($match.Success) {
                             $percent = [int]$match.Groups[1].Value
                             if ($percent -ne $lastPercent) {
@@ -144,6 +151,7 @@ function Get-ArchiveForDatabase {
                         }
                     }
 
+                    # stdout нужен только для диагностики, если 7-Zip вернул ошибку.
                     $sevenZipStdoutText = $process.StandardOutput.ReadToEnd()
                     $process.WaitForExit()
                     $rc = $process.ExitCode
