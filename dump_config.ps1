@@ -3,7 +3,7 @@ $ScriptDate = '2026-10-03 00:53'
 $ScriptName = 'dump_config.ps1'
 Write-Host "DumpFlow1c: $ScriptName — $ScriptVersion — $ScriptDate"
 
-# DumpFlow1c: v1.0.1 — 2026-10-03 06:43
+# DumpFlow1c: v1.0.2 — 2026-10-03 00:53
 #Requires -Version 5.1
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
