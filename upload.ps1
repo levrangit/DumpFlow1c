@@ -1,5 +1,5 @@
-﻿$ScriptVersion = 'v1.1.0'
-$ScriptDate = '2026-10-03 15:05'
+﻿$ScriptVersion = 'v1.1.1'
+$ScriptDate = '2026-10-03 15:25'
 $ScriptName = 'upload.ps1'
 Write-Host "DumpFlow1c: $ScriptName — $ScriptVersion — $ScriptDate"
 
@@ -175,12 +175,14 @@ Write-Host ''
 # Передаём ровно тот комплект, который описан control_upload.json.
 $script:TotalCopies = $transfers.Count * 4
 Write-Host ("Всего файлов к копированию: {0}" -f $script:TotalCopies)
+$script:TotalCopies = $transfers.Count * 4
+Write-Host ("Всего файлов к копированию: {0}" -f $script:TotalCopies)
 $uploadTimer = [Diagnostics.Stopwatch]::StartNew()
 foreach ($item in $transfers) {
     Invoke-FileCopyTo $item.LocalArchivePath (Join-Path $archiveDestination $item.Archive.Name)
-    Invoke-RcloneCopyTo $item.LocalShaPath (Join-Path $archiveDestination $item.ArchiveChecksum.Name)
-    Invoke-RcloneCopyTo $item.LocalManifestPath (Join-Path $archiveDestination $item.Manifest.Name)
-    Invoke-RcloneCopyTo $item.LocalChangesPath (Join-Path $archiveDestination $item.Changes.Name)
+    Invoke-FileCopyTo $item.LocalShaPath (Join-Path $archiveDestination $item.ArchiveChecksum.Name)
+    Invoke-FileCopyTo $item.LocalManifestPath (Join-Path $archiveDestination $item.Manifest.Name)
+    Invoke-FileCopyTo $item.LocalChangesPath (Join-Path $archiveDestination $item.Changes.Name)
 }
 $uploadTimer.Stop()
 Write-Host ''
