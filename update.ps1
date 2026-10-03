@@ -1,4 +1,4 @@
-﻿# DumpFlow1c: версия файла — 2026-09-30 23:17
+﻿# DumpFlow1c: версия файла — 2026-10-03 11:18
 #Requires -Version 5.1
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -37,8 +37,8 @@ foreach ($dbFile in $dbFiles) {
     New-Item -ItemType Directory -Force -Path $metadataDir | Out-Null
 
     $snapshotId = (Get-Date).ToString('yyyyMMdd_HHmmss')
-    $manifestName = "manifest_{0}_{1}.json" -f $id,$snapshotId
-    $changesName = "changes_{0}_{1}.json" -f $id,$snapshotId
+    $manifestName = "{0}_{1}_manifest.json" -f $id,$snapshotId
+    $changesName = "{0}_{1}_changes.json" -f $id,$snapshotId
     $manifestPath = Join-Path $metadataDir $manifestName
     $changesPath = Join-Path $metadataDir $changesName
     $statePath = Join-Path $metadataDir 'state.json'
