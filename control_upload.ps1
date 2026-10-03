@@ -63,10 +63,13 @@ function Get-CheckState([string]$Label,[string]$Path,[int64]$Size,[string]$Kind,
 }
 
 function Write-Status([string]$Text) {
-    # ANSI: очистить текущую строку и вернуть курсор в ее начало.
-    $esc = [char]27
-    $sequence = "$esc[2K$esc[1G$Text"
-    [Console]::Write($sequence)
+    # Перерисовываем одну строку через возврат каретки.
+    # Дополняем пробелами, чтобы хвост предыдущего, более длинного статуса, исчезал.
+    if ($script:StatusWidth -lt $Text.Length) {
+        $script:StatusWidth = $Text.Length
+    }
+
+    [Console]::Write(("`r" + $Text.PadRight($script:StatusWidth)))
 }
 
 Write-Host '------------------------------------------------------------'
@@ -78,6 +81,7 @@ Write-Host "Control: $controlPath"
 Write-Host ''
 
 $start = Get-Date
+$script:StatusWidth = 0
 
 while ($true) {
     $allComplete = $true
