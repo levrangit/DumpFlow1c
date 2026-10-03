@@ -69,13 +69,6 @@ foreach ($dbFile in $dbFiles) {
     $metadataDir = Join-Path $metadataRoot $id
     New-Item -ItemType Directory -Force -Path $metadataDir | Out-Null
 
-    $snapshotId = (Get-Date).ToString('yyyyMMdd_HHmmss')
-    $manifestName = "{0}_{1}_manifest.json" -f $id,$snapshotId
-    $changesName = "{0}_{1}_changes.json" -f $id,$snapshotId
-    $manifestPath = Join-Path $metadataDir $manifestName
-    $changesPath = Join-Path $metadataDir $changesName
-    $statePath = Join-Path $metadataDir 'state.json'
-
     if (-not $skipManifest) {
         & (Join-Path $root 'manifest.ps1') -DatabaseName $id
         if ($LASTEXITCODE -ne 0) { throw "manifest.ps1 завершился с кодом $LASTEXITCODE для $id." }
@@ -84,7 +77,7 @@ foreach ($dbFile in $dbFiles) {
     }
 
     if (-not $skipCompareManifests) {
-        & (Join-Path $root 'compare_manifests.ps1') -CurrentManifestPath $manifestPath -StatePath $statePath -OutputPath $changesPath
+        & (Join-Path $root 'compare_manifests.ps1') -DatabaseName $id
         if ($LASTEXITCODE -ne 0) { throw "compare_manifests.ps1 завершился с кодом $LASTEXITCODE для $id." }
     } else {
         Write-Host "Пропуск compare_manifests.ps1 для $id (--NoCompare_manifests)."
