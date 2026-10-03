@@ -1,13 +1,13 @@
-$ScriptVersion = 'v1.0.2'
-$ScriptDate = '2026-10-03 00:53'
-$ScriptName = 'control_upload.ps1'
-Write-Host "DumpFlow1c: $ScriptName — $ScriptVersion — $ScriptDate"
-
 #Requires -Version 5.1
 [CmdletBinding()]
 param(
     [string]$Path = 'L:\!work\RAU_IT\MCP'
 )
+
+$ScriptVersion = 'v1.0.3'
+$ScriptDate = '2026-10-03 00:53'
+$ScriptName = 'control_upload.ps1'
+Write-Host "DumpFlow1c: $ScriptName — $ScriptVersion — $ScriptDate"
 
 $ErrorActionPreference = 'Stop'
 
