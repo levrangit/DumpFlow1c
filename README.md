@@ -38,8 +38,8 @@ PowerShell-пайплайн передачи dump конфигураций 1С �
 
 ~~~text
 <PROJECT>/metadata/<DB>/
-├── manifest_<DB>_<snapshot>.json
-├── changes_<DB>_<snapshot>.json
+├── <DB>_<snapshot>_manifest.json
+├── <DB>_<snapshot>_changes.json
 └── state.json
 ~~~
 
