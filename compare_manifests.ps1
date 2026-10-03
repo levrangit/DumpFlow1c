@@ -1,4 +1,4 @@
-﻿# DumpFlow1c: версия файла — 2026-10-01 00:03
+﻿# DumpFlow1c: версия файла — 2026-10-03 11:18
 #Requires -Version 5.1
 [CmdletBinding()]
 param(
@@ -83,7 +83,7 @@ function Compare-Database {
         throw "Не найден metadata-каталог базы: $metadataDir"
     }
 
-    $manifestFiles = @(Get-ChildItem -LiteralPath $metadataDir -Filter ("manifest_{0}_*.json" -f $DatabaseName) -File | Sort-Object Name -Descending)
+    $manifestFiles = @(Get-ChildItem -LiteralPath $metadataDir -Filter ("{0}_*_manifest.json" -f $DatabaseName) -File | Sort-Object Name -Descending)
     if ($manifestFiles.Count -eq 0) {
         throw "Не найден manifest для $DatabaseName в $metadataDir"
     }
@@ -188,7 +188,7 @@ function Compare-Database {
         Files                = $changes
     }
 
-    $changesPath = Join-Path $metadataDir ("changes_{0}_{1}.json" -f $DatabaseName,$current.SnapshotId)
+    $changesPath = Join-Path $metadataDir ("{0}_{1}_changes.json" -f $DatabaseName,$current.SnapshotId)
     $result | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $changesPath -Encoding UTF8
 
     Write-Host "CHANGES: $changesPath"
