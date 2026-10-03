@@ -1,4 +1,4 @@
-$ScriptVersion = 'v1.0.2'
+﻿$ScriptVersion = 'v1.0.2'
 $ScriptDate = '2026-10-03 00:53'
 $ScriptName = 'pack.ps1'
 Write-Host "DumpFlow1c: $ScriptName — $ScriptVersion — $ScriptDate"
@@ -135,6 +135,8 @@ function Get-ArchiveForDatabase {
         }
         else {
             Write-Step ("База {0}: изменений для упаковки нет, создаю корректный пустой 7z." -f $DatabaseName)
+            $sevenZipStdout = Join-Path $archiveDir ('.7za_stdout_' + [guid]::NewGuid().ToString('N') + '.txt')
+            $sevenZipStderr = Join-Path $archiveDir ('.7za_stderr_' + [guid]::NewGuid().ToString('N') + '.txt')
             $emptyMarker = Join-Path $archiveDir ('.empty_' + [guid]::NewGuid().ToString('N') + '.txt')
             Set-Content -LiteralPath $emptyMarker -Value 'empty' -Encoding ASCII
             & $sevenZip a -t7z -mx=5 -mmt=on -bsp0 -bso0 $archivePath $emptyMarker > $sevenZipStdout 2> $sevenZipStderr
@@ -195,6 +197,8 @@ function Get-ArchiveForDatabase {
     }
     finally {
         if ($listPath -and (Test-Path -LiteralPath $listPath)) { Remove-Item -LiteralPath $listPath -Force -ErrorAction SilentlyContinue }
+        if ($sevenZipStdout -and (Test-Path -LiteralPath $sevenZipStdout)) { Remove-Item -LiteralPath $sevenZipStdout -Force -ErrorAction SilentlyContinue }
+        if ($sevenZipStderr -and (Test-Path -LiteralPath $sevenZipStderr)) { Remove-Item -LiteralPath $sevenZipStderr -Force -ErrorAction SilentlyContinue }
     }
 }
 
