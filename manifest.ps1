@@ -1,4 +1,4 @@
-﻿# DumpFlow1c: версия файла — 2026-10-03 11:18
+﻿# DumpFlow1c: v1.0.1 — 2026-10-03 06:43
 #Requires -Version 5.1
 [CmdletBinding()]
 param(
