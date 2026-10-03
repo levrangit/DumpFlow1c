@@ -1,11 +1,45 @@
-﻿$ScriptVersion = 'v1.0.2'
-$ScriptDate = '2026-10-03 00:53'
+﻿$ScriptVersion = 'v1.0.3'
+$ScriptDate = '2026-10-03 13:40'
 $ScriptName = 'update.ps1'
-Write-Host "DumpFlow1c: $ScriptName — $ScriptVersion — $ScriptDate"
-
 #Requires -Version 5.1
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
+
+function Write-UpdateLog {
+    param([string]$Message)
+
+    $line = "[{0}] {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff'), $Message
+    Write-Host $line
+    if ($script:UpdateLogPath) {
+        Add-Content -LiteralPath $script:UpdateLogPath -Value $line -Encoding UTF8
+    }
+}
+
+function Invoke-LoggedScript {
+    param(
+        [string]$ScriptPath,
+        [string[]]$Arguments = @()
+    )
+
+    Write-UpdateLog ("Запуск: {0} {1}" -f $ScriptPath, ($Arguments -join ' '))
+
+    & $ScriptPath @Arguments 2>&1 |
+        ForEach-Object {
+            $line = $_ | Out-String -Width 4096
+            $line = $line.TrimEnd()
+            if (-not [string]::IsNullOrWhiteSpace($line)) {
+                Write-Host $line
+                Add-Content -LiteralPath $script:UpdateLogPath -Value $line -Encoding UTF8
+            }
+        }
+
+    $exitCode = $LASTEXITCODE
+    Write-UpdateLog ("Завершён: {0}; EXIT CODE: {1}" -f $ScriptPath, $exitCode)
+
+    if ($exitCode -ne 0) {
+        throw "{0} завершился с кодом {1}." -f ([IO.Path]::GetFileName($ScriptPath)), $exitCode
+    }
+}
 
 $skipPrepare = $false
 $skipDumpConfig = $false
@@ -26,22 +60,14 @@ foreach ($argument in $args) {
     }
 }
 
-Write-Host '============================================================'
-Write-Host 'MCP - UPDATE'
-Write-Host '============================================================'
-
 if (-not $skipPrepare) {
-    Write-Host 'Запуск prepare.ps1...'
-    & (Join-Path $root 'prepare.ps1')
-    if ($LASTEXITCODE -ne 0) { throw "prepare.ps1 завершился с кодом $LASTEXITCODE." }
+    Invoke-LoggedScript (Join-Path $root 'prepare.ps1')
 } else {
     Write-Host 'Пропуск prepare.ps1 (--NoPrepare).'
 }
 
 if (-not $skipDumpConfig) {
-    Write-Host 'Запуск dump_config.ps1...'
-    & (Join-Path $root 'dump_config.ps1')
-    if ($LASTEXITCODE -ne 0) { throw "dump_config.ps1 завершился с кодом $LASTEXITCODE." }
+    Invoke-LoggedScript (Join-Path $root 'dump_config.ps1')
 } else {
     Write-Host 'Пропуск dump_config.ps1 (--NoDump_config).'
 }
@@ -54,6 +80,19 @@ $projectName = [string]$terminal.project_name
 $mcpWork = [string]$terminal.mcp_work
 if ([string]::IsNullOrWhiteSpace($projectName)) { throw 'В terminal JSON не задан project_name.' }
 if ([string]::IsNullOrWhiteSpace($mcpWork)) { throw 'В terminal JSON не задан mcp_work.' }
+
+$logsRoot = Join-Path $mcpWork 'logs'
+New-Item -ItemType Directory -Force -Path $logsRoot | Out-Null
+$script:UpdateLogPath = Join-Path $logsRoot ("update_{0}_{1}.log" -f (Get-Date -Format 'yyyyMMdd_HHmmss_fff'), ([guid]::NewGuid().ToString('N').Substring(0,8)))
+
+Write-UpdateLog ("DumpFlow1c: {0} — {1} — {2}" -f $ScriptName, $ScriptVersion, $ScriptDate)
+Write-UpdateLog ("Компьютер: {0}" -f $computer)
+Write-UpdateLog ("Проект: {0}" -f $projectName)
+Write-UpdateLog ("Рабочий каталог: {0}" -f $mcpWork)
+Write-UpdateLog '============================================================'
+Write-UpdateLog 'MCP - UPDATE'
+Write-UpdateLog '============================================================'
+
 $dumpRoot = Join-Path (Join-Path $mcpWork 'dump') $projectName
 $metadataRoot = Join-Path (Join-Path $mcpWork 'metadata') $projectName
 New-Item -ItemType Directory -Force -Path $metadataRoot | Out-Null
@@ -70,38 +109,30 @@ foreach ($dbFile in $dbFiles) {
     New-Item -ItemType Directory -Force -Path $metadataDir | Out-Null
 
     if (-not $skipManifest) {
-        & (Join-Path $root 'manifest.ps1') -DatabaseName $id
-        if ($LASTEXITCODE -ne 0) { throw "manifest.ps1 завершился с кодом $LASTEXITCODE для $id." }
+        Invoke-LoggedScript (Join-Path $root 'manifest.ps1') @('-DatabaseName', $id)
     } else {
         Write-Host "Пропуск manifest.ps1 для $id (--NoManifest)."
     }
 
     if (-not $skipCompareManifests) {
-        & (Join-Path $root 'compare_manifests.ps1') -DatabaseName $id
-        if ($LASTEXITCODE -ne 0) { throw "compare_manifests.ps1 завершился с кодом $LASTEXITCODE для $id." }
+        Invoke-LoggedScript (Join-Path $root 'compare_manifests.ps1') @('-DatabaseName', $id)
     } else {
         Write-Host "Пропуск compare_manifests.ps1 для $id (--NoCompare_manifests)."
     }
 }
 
 if (-not $skipPack) {
-    Write-Host 'Запуск pack.ps1...'
-    & (Join-Path $root 'pack.ps1')
-    if ($LASTEXITCODE -ne 0) { throw "pack.ps1 завершился с кодом $LASTEXITCODE." }
+    Invoke-LoggedScript (Join-Path $root 'pack.ps1')
 } else {
     Write-Host 'Пропуск pack.ps1 (--NoPack).'
 }
 
 if (-not $skipUpload) {
-    Write-Host 'Запуск upload.ps1...'
-    & (Join-Path $root 'upload.ps1')
-    if ($LASTEXITCODE -ne 0) { throw "upload.ps1 завершился с кодом $LASTEXITCODE." }
+    Invoke-LoggedScript (Join-Path $root 'upload.ps1')
 } else {
     Write-Host 'Пропуск upload.ps1 (--NoUpload).'
 }
 
-Write-Host ''
-Write-Host '============================================================'
-Write-Host 'MCP UPDATE COMPLETED'
-Write-Host '============================================================'
+Write-UpdateLog 'MCP UPDATE COMPLETED'
+Write-UpdateLog ("Лог полного запуска: {0}" -f $script:UpdateLogPath)
 exit 0
