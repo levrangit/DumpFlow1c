@@ -1,5 +1,5 @@
-﻿$ScriptVersion = 'v1.0.2'
-$ScriptDate = '2026-10-03 00:53'
+﻿$ScriptVersion = 'v1.0.3'
+$ScriptDate = '2026-10-03 15:35'
 $ScriptName = 'dump_config.ps1'
 Write-Host "DumpFlow1c: $ScriptName — $ScriptVersion — $ScriptDate"
 
@@ -62,7 +62,7 @@ function Wait-DumpCompletion {
             $lastSize = $stats.TotalBytes
             $lastWrite = $stats.LastWrite
             $stableSince = $null
-            Write-Log ("Изменения: файлов={0}; размер={1} MB; последний файл={2}" -f $stats.Count,[math]::Round($stats.TotalBytes / 1MB,2),$stats.LastWrite) $LogPath
+            Write-ControlLog ("Изменения: файлов={0}; размер={1} MB; последний файл={2}" -f $stats.Count,[math]::Round($stats.TotalBytes / 1MB,2),$stats.LastWrite) $LogPath
         }
         elseif ($seenFiles) {
             if ($null -eq $stableSince) { $stableSince = Get-Date }
