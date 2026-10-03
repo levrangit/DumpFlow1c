@@ -170,6 +170,7 @@ Write-Host '------------------------------------------------------------'
 Write-Host "Проект: $projectName"
 Write-Host "Control upload: $controlPath"
 Write-Host ("Баз: {0:N0}" -f $transfers.Count)
+Write-Host "Каталог загрузки: $archiveUploadDestination"
 Write-Host ''
 
 # Передаём ровно тот комплект, который описан control_upload.json.
@@ -179,10 +180,10 @@ $script:TotalCopies = $transfers.Count * 4
 Write-Host ("Всего файлов к копированию: {0}" -f $script:TotalCopies)
 $uploadTimer = [Diagnostics.Stopwatch]::StartNew()
 foreach ($item in $transfers) {
-    Invoke-FileCopyTo $item.LocalArchivePath (Join-Path $archiveDestination $item.Archive.Name)
-    Invoke-FileCopyTo $item.LocalShaPath (Join-Path $archiveDestination $item.ArchiveChecksum.Name)
-    Invoke-FileCopyTo $item.LocalManifestPath (Join-Path $archiveDestination $item.Manifest.Name)
-    Invoke-FileCopyTo $item.LocalChangesPath (Join-Path $archiveDestination $item.Changes.Name)
+    Invoke-FileCopyTo $item.LocalArchivePath (Join-Path $archiveUploadDestination $item.Archive.Name)
+    Invoke-FileCopyTo $item.LocalShaPath (Join-Path $archiveUploadDestination $item.ArchiveChecksum.Name)
+    Invoke-FileCopyTo $item.LocalManifestPath (Join-Path $archiveUploadDestination $item.Manifest.Name)
+    Invoke-FileCopyTo $item.LocalChangesPath (Join-Path $archiveUploadDestination $item.Changes.Name)
 }
 $uploadTimer.Stop()
 Write-Host ''
