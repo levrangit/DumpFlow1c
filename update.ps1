@@ -77,7 +77,7 @@ foreach ($dbFile in $dbFiles) {
     $statePath = Join-Path $metadataDir 'state.json'
 
     if (-not $skipManifest) {
-        & (Join-Path $root 'manifest.ps1') -Path $dumpPath -ProjectName $projectName -DatabaseName $id -SnapshotId $snapshotId -OutputPath $manifestPath -WithMD5
+        & (Join-Path $root 'manifest.ps1') -DatabaseName $id
         if ($LASTEXITCODE -ne 0) { throw "manifest.ps1 завершился с кодом $LASTEXITCODE для $id." }
     } else {
         Write-Host "Пропуск manifest.ps1 для $id (--NoManifest)."
