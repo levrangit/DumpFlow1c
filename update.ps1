@@ -3,15 +3,44 @@
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
 
+$skipPrepare = $false
+$skipDumpConfig = $false
+$skipManifest = $false
+$skipCompareManifests = $false
+$skipPack = $false
+$skipUpload = $false
+
+foreach ($argument in $args) {
+    switch ($argument) {
+        '--NoPrepare'             { $skipPrepare = $true; continue }
+        '--NoDump_config'        { $skipDumpConfig = $true; continue }
+        '--NoManifest'           { $skipManifest = $true; continue }
+        '--NoCompare_manifests'  { $skipCompareManifests = $true; continue }
+        '--NoPack'               { $skipPack = $true; continue }
+        '--NoUpload'             { $skipUpload = $true; continue }
+        default { throw "Неизвестный флаг update.ps1: $argument" }
+    }
+}
+
 Write-Host '============================================================'
 Write-Host 'MCP - UPDATE'
 Write-Host '============================================================'
 
-& (Join-Path $root 'prepare.ps1')
-if ($LASTEXITCODE -ne 0) { throw "prepare.ps1 завершился с кодом $LASTEXITCODE." }
+if (-not $skipPrepare) {
+    Write-Host 'Запуск prepare.ps1...'
+    & (Join-Path $root 'prepare.ps1')
+    if ($LASTEXITCODE -ne 0) { throw "prepare.ps1 завершился с кодом $LASTEXITCODE." }
+} else {
+    Write-Host 'Пропуск prepare.ps1 (--NoPrepare).'
+}
 
-& (Join-Path $root 'dump_config.ps1')
-if ($LASTEXITCODE -ne 0) { throw "dump_config.ps1 завершился с кодом $LASTEXITCODE." }
+if (-not $skipDumpConfig) {
+    Write-Host 'Запуск dump_config.ps1...'
+    & (Join-Path $root 'dump_config.ps1')
+    if ($LASTEXITCODE -ne 0) { throw "dump_config.ps1 завершился с кодом $LASTEXITCODE." }
+} else {
+    Write-Host 'Пропуск dump_config.ps1 (--NoDump_config).'
+}
 
 $computer = $env:COMPUTERNAME
 $terminalPath = Join-Path $root ("config\terminals\{0}.json" -f $computer)
@@ -43,18 +72,36 @@ foreach ($dbFile in $dbFiles) {
     $changesPath = Join-Path $metadataDir $changesName
     $statePath = Join-Path $metadataDir 'state.json'
 
-    & (Join-Path $root 'manifest.ps1') -Path $dumpPath -ProjectName $projectName -DatabaseName $id -SnapshotId $snapshotId -OutputPath $manifestPath -WithMD5
-    if ($LASTEXITCODE -ne 0) { throw "manifest.ps1 завершился с кодом $LASTEXITCODE для $id." }
+    if (-not $skipManifest) {
+        & (Join-Path $root 'manifest.ps1') -Path $dumpPath -ProjectName $projectName -DatabaseName $id -SnapshotId $snapshotId -OutputPath $manifestPath -WithMD5
+        if ($LASTEXITCODE -ne 0) { throw "manifest.ps1 завершился с кодом $LASTEXITCODE для $id." }
+    } else {
+        Write-Host "Пропуск manifest.ps1 для $id (--NoManifest)."
+    }
 
-    & (Join-Path $root 'compare_manifests.ps1') -CurrentManifestPath $manifestPath -StatePath $statePath -OutputPath $changesPath
-    if ($LASTEXITCODE -ne 0) { throw "compare_manifests.ps1 завершился с кодом $LASTEXITCODE для $id." }
+    if (-not $skipCompareManifests) {
+        & (Join-Path $root 'compare_manifests.ps1') -CurrentManifestPath $manifestPath -StatePath $statePath -OutputPath $changesPath
+        if ($LASTEXITCODE -ne 0) { throw "compare_manifests.ps1 завершился с кодом $LASTEXITCODE для $id." }
+    } else {
+        Write-Host "Пропуск compare_manifests.ps1 для $id (--NoCompare_manifests)."
+    }
 }
 
-& (Join-Path $root 'pack.ps1')
-if ($LASTEXITCODE -ne 0) { throw "pack.ps1 завершился с кодом $LASTEXITCODE." }
+if (-not $skipPack) {
+    Write-Host 'Запуск pack.ps1...'
+    & (Join-Path $root 'pack.ps1')
+    if ($LASTEXITCODE -ne 0) { throw "pack.ps1 завершился с кодом $LASTEXITCODE." }
+} else {
+    Write-Host 'Пропуск pack.ps1 (--NoPack).'
+}
 
-& (Join-Path $root 'upload.ps1')
-if ($LASTEXITCODE -ne 0) { throw "upload.ps1 завершился с кодом $LASTEXITCODE." }
+if (-not $skipUpload) {
+    Write-Host 'Запуск upload.ps1...'
+    & (Join-Path $root 'upload.ps1')
+    if ($LASTEXITCODE -ne 0) { throw "upload.ps1 завершился с кодом $LASTEXITCODE." }
+} else {
+    Write-Host 'Пропуск upload.ps1 (--NoUpload).'
+}
 
 Write-Host ''
 Write-Host '============================================================'
