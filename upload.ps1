@@ -1,5 +1,5 @@
-﻿$ScriptVersion = 'v1.0.2'
-$ScriptDate = '2026-10-03 00:53'
+﻿$ScriptVersion = 'v1.0.3'
+$ScriptDate = '2026-10-03 13:30'
 $ScriptName = 'upload.ps1'
 Write-Host "DumpFlow1c: $ScriptName — $ScriptVersion — $ScriptDate"
 
@@ -53,12 +53,52 @@ function Get-Sha256([string]$Path) {
 
 function Invoke-RcloneCopyTo {
     param([string]$Source,[string]$Destination)
-    Write-Host "Передача: $Source -> $Destination"
+
+    $script:DiagNumber++
+    $number = $script:DiagNumber
+    $file = Get-Item -LiteralPath $Source
+    $fileSize = [int64]$file.Length
+    $before = Get-Date
+
+    Write-Host ''
+    Write-Host '============================================================'
+    Write-Host ("DIAGNOSTICS RCLONE #{0}" -f $number)
+    Write-Host '============================================================'
+    Write-Host ("Файл       : {0}" -f $file.Name)
+    Write-Host ("Размер     : {0:N0} bytes" -f $fileSize)
+    Write-Host ("До rclone  : {0}" -f $before.ToString('HH:mm:ss.fff'))
+
+    if ($null -ne $script:DiagLastRcloneEnd) {
+        $gapMs = ($before - $script:DiagLastRcloneEnd).TotalMilliseconds
+        Write-Host ("Пауза между rclone: {0:N0} ms = {1:N3} sec = {2:N2} min" -f $gapMs, ($gapMs / 1000), ($gapMs / 60000))
+    }
+    else {
+        Write-Host 'Пауза между rclone: первый запуск'
+    }
+
+    Write-Host ("Источник  : {0}" -f $Source)
+    Write-Host ("Назначение: {0}" -f $Destination)
+    Write-Host ''
+
+    $timer = [Diagnostics.Stopwatch]::StartNew()
     & $rclone --config $rcloneConfig copyto $Source $Destination --progress --stats 5s --verbose
-    if ($LASTEXITCODE -ne 0) { throw "rclone завершился с кодом ${LASTEXITCODE}: $Source" }
+    $exitCode = $LASTEXITCODE
+    $timer.Stop()
+
+    $after = Get-Date
+    $script:DiagLastRcloneEnd = $after
+
+    Write-Host ''
+    Write-Host '------------------------------------------------------------'
+    Write-Host ("После rclone : {0}" -f $after.ToString('HH:mm:ss.fff'))
+    Write-Host ("Время rclone : {0:N0} ms = {1:N3} sec" -f $timer.ElapsedMilliseconds, $timer.Elapsed.TotalSeconds)
+    Write-Host ("Exit code    : {0}" -f $exitCode)
+    Write-Host '------------------------------------------------------------'
+
+    if ($exitCode -ne 0) { throw "rclone завершился с кодом ${exitCode}: $Source" }
 }
 
-$dbDir = Join-Path (Join-Path $configDir 'databases') $computer
+$script:DiagLastRcloneEnd = $null`r`n$script:DiagNumber = 0`r`n`r`n$dbDir = Join-Path (Join-Path $configDir 'databases') $computer
 $dbFiles = @(Get-ChildItem -LiteralPath $dbDir -Filter '*.json' -File | Sort-Object Name)
 if ($dbFiles.Count -eq 0) { throw "В каталоге нет JSON баз: $dbDir" }
 
@@ -155,12 +195,19 @@ Write-Host ("Баз: {0:N0}" -f $transfers.Count)
 Write-Host ''
 
 # Передаём ровно тот комплект, который описан control_upload.json.
+$uploadTimer = [Diagnostics.Stopwatch]::StartNew()
 foreach ($item in $transfers) {
     Invoke-RcloneCopyTo $item.LocalArchivePath (Join-Path $archiveDestination $item.Archive.Name)
     Invoke-RcloneCopyTo $item.LocalShaPath (Join-Path $archiveDestination $item.ArchiveChecksum.Name)
     Invoke-RcloneCopyTo $item.LocalManifestPath (Join-Path $archiveDestination $item.Manifest.Name)
     Invoke-RcloneCopyTo $item.LocalChangesPath (Join-Path $archiveDestination $item.Changes.Name)
-}
+}
+$uploadTimer.Stop()
+Write-Host ''
+Write-Host '============================================================'
+Write-Host ("DIAG ОБЩЕЕ ВРЕМЯ ПЕРЕДАЧИ: {0:N3} sec" -f $uploadTimer.Elapsed.TotalSeconds)
+Write-Host '============================================================'
+Write-Host ''
 
 # Независимо от control_upload.ps1 выполняем финальную проверку прямо с терминала.
 # Это позволяет безопасно обновить state.json только после фактической доставки на RDP-диск.
