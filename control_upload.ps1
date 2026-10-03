@@ -4,8 +4,8 @@ param(
     [string]$Path = 'L:\!work\RAU_IT\MCP'
 )
 
-$ScriptVersion = 'v1.0.5'
-$ScriptDate = '2026-10-03 13:15'
+$ScriptVersion = 'v1.0.6'
+$ScriptDate = '2026-10-03 13:20'
 $ScriptName = 'control_upload.ps1'
 Write-Host "DumpFlow1c: $ScriptName — $ScriptVersion — $ScriptDate"
 
@@ -127,7 +127,7 @@ while ($true) {
     }
 
     $percent = if ($totalBytes -gt 0) { 100.0 * $receivedBytes / $totalBytes } else { 100.0 }
-    $status = ("[{0}] {1} | {2:N2}% | {3}/{4} | {5}/{6}" -f (Get-Date -Format "HH:mm:ss"), ($databaseParts -join " | "), $percent, $completeFiles, $totalFiles, (Format-Bytes $receivedBytes), (Format-Bytes $totalBytes))
+    $status = ("[{0}] | {1:N2}% | {2}/{3} | {4}/{5} | {6}" -f (Get-Date -Format "HH:mm:ss"), $percent, $completeFiles, $totalFiles, (Format-Bytes $receivedBytes), (Format-Bytes $totalBytes), ($databaseParts -join " | "))
     Write-Status $status
 
     if ($allComplete) {
