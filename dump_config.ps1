@@ -1,4 +1,4 @@
-﻿# DumpFlow1c: версия файла — 2026-09-30 23:35
+﻿# DumpFlow1c: v1.0.1 — 2026-10-03 06:43
 #Requires -Version 5.1
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
