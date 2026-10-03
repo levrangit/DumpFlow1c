@@ -4,8 +4,8 @@ param(
     [string]$Path = 'L:\!work\RAU_IT\MCP'
 )
 
-$ScriptVersion = 'v1.0.6'
-$ScriptDate = '2026-10-03 13:20'
+$ScriptVersion = 'v1.0.7'
+$ScriptDate = '2026-10-03 15:20'
 $ScriptName = 'control_upload.ps1'
 Write-Host "DumpFlow1c: $ScriptName — $ScriptVersion — $ScriptDate"
 
@@ -53,12 +53,21 @@ function Get-CheckState([string]$Label,[string]$Path,[int64]$Size,[string]$Kind,
     if (-not (Test-File $Path $Size)) {
         return [PSCustomObject]@{ Label=$Label; State='ожидание'; Size=$Size; Received=$false; Valid=$false }
     }
-    $valid = switch ($Kind) {
-        'SHA256' { (Get-Sha256 $Path) -eq $Hash; break }
-        'MD5' { (Get-Md5 $Path) -eq $Hash; break }
-        'SIDECAR' { Test-ShaSidecar $Path $ArchiveName $Hash; break }
-        default { $false }
+
+    try {
+        $valid = switch ($Kind) {
+            'SHA256' { (Get-Sha256 $Path) -eq $Hash; break }
+            'MD5' { (Get-Md5 $Path) -eq $Hash; break }
+            'SIDECAR' { Test-ShaSidecar $Path $ArchiveName $Hash; break }
+            default { $false }
+        }
     }
+    catch {
+        # Copy-Item может уже вернуть управление, пока RDP/tsclient ещё держит
+        # файл открытым. В следующем цикле контроль повторит проверку.
+        return [PSCustomObject]@{ Label=$Label; State='ожидание'; Size=$Size; Received=$false; Valid=$false }
+    }
+
     return [PSCustomObject]@{ Label=$Label; State=if ($valid) { 'OK' } else { 'HASH ERROR' }; Size=$Size; Received=$true; Valid=$valid }
 }
 
