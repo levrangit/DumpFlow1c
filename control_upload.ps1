@@ -4,8 +4,8 @@ param(
     [string]$Path = 'L:\!work\RAU_IT\MCP'
 )
 
-$ScriptVersion = 'v1.0.4'
-$ScriptDate = '2026-10-03 13:10'
+$ScriptVersion = 'v1.0.5'
+$ScriptDate = '2026-10-03 13:15'
 $ScriptName = 'control_upload.ps1'
 Write-Host "DumpFlow1c: $ScriptName — $ScriptVersion — $ScriptDate"
 
@@ -63,18 +63,20 @@ function Get-CheckState([string]$Label,[string]$Path,[int64]$Size,[string]$Kind,
 }
 
 function Write-Status([string]$Text) {
-    # Обновляем одну и ту же строку консоли без добавления новых строк.
-    if ($script:StatusWidth -lt $Text.Length) {
-        $script:StatusWidth = $Text.Length
+    # Статус должен физически помещаться в одну строку консоли.
+    # Иначе перенос строки делает перерисовку через CR визуально некорректной.
+    $width = 120
+    try {
+        if ([Console]::WindowWidth -gt 10) {
+            $width = [Console]::WindowWidth - 1
+        }
+    } catch { }
+
+    if ($Text.Length -gt $width) {
+        $Text = $Text.Substring(0, $width - 3) + '...'
     }
 
-    try {
-        [Console]::SetCursorPosition(0, [Console]::CursorTop)
-        [Console]::Write($Text.PadRight($script:StatusWidth))
-    } catch {
-        # Запасной вариант для хостов, где управление позицией курсора недоступно.
-        [Console]::Write(("`r" + $Text.PadRight($script:StatusWidth)))
-    }
+    [Console]::Write(("`r" + $Text.PadRight($width)))
 }
 
 Write-Host '------------------------------------------------------------'
@@ -112,10 +114,16 @@ while ($true) {
                 $receivedBytes += $check.Size
                 $completeFiles++
                 if (-not $check.Valid) { $allComplete = $false }
-            } else { $allComplete = $false }
+            } else {
+                $allComplete = $false
+            }
             $shortStates += "$($check.Label)=$($check.State)"
         }
-        $databaseParts += "${database}/${snapshot}: " + ($shortStates -join ",")
+
+        # Для двух баз оставляем только компактное состояние файлов,
+        # чтобы вся строка гарантированно помещалась в окно консоли.
+        $compact = ($shortStates -join ',')
+        $databaseParts += "$database=$compact"
     }
 
     $percent = if ($totalBytes -gt 0) { 100.0 * $receivedBytes / $totalBytes } else { 100.0 }
