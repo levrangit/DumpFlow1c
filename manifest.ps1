@@ -1,4 +1,4 @@
-﻿# DumpFlow1c: версия файла — 2026-10-01 00:10
+﻿# DumpFlow1c: версия файла — 2026-10-03 11:18
 #Requires -Version 5.1
 [CmdletBinding()]
 param(
@@ -165,7 +165,7 @@ foreach ($dbFile in $dbFiles) {
 
     $dumpPath = Join-Path $dumpRoot $id
     $metadataDir = Join-Path $metadataRoot $id
-    $manifestPath = Join-Path $metadataDir ("manifest_{0}_{1}.json" -f $id,$snapshotId)
+    $manifestPath = Join-Path $metadataDir ("{0}_{1}_manifest.json" -f $id,$snapshotId)
 
     New-Manifest -DatabaseName $id -DumpPath $dumpPath -OutputPath $manifestPath
 }
