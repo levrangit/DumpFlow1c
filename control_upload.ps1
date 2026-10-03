@@ -4,8 +4,8 @@ param(
     [string]$Path = 'L:\!work\RAU_IT\MCP'
 )
 
-$ScriptVersion = 'v1.0.3'
-$ScriptDate = '2026-10-03 00:53'
+$ScriptVersion = 'v1.0.4'
+$ScriptDate = '2026-10-03 13:10'
 $ScriptName = 'control_upload.ps1'
 Write-Host "DumpFlow1c: $ScriptName — $ScriptVersion — $ScriptDate"
 
