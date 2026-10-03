@@ -1,4 +1,4 @@
-﻿# DumpFlow1c: версия файла — 2026-09-30 23:35
+﻿# DumpFlow1c: версия файла — 2026-10-03 11:18
 #Requires -Version 5.1
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -58,7 +58,7 @@ foreach ($dbFile in $dbFiles) {
     $id = [string]$db.db_source_id
     $metadataDir = Join-Path $metadataRoot $id
 
-    $changesFiles = @(Get-ChildItem -LiteralPath $metadataDir -Filter ("changes_{0}_*.json" -f $id) -File | Sort-Object Name -Descending)
+    $changesFiles = @(Get-ChildItem -LiteralPath $metadataDir -Filter ("{0}_*_changes.json" -f $id) -File | Sort-Object Name -Descending)
     if ($changesFiles.Count -eq 0) { throw "Не найден changes для $id" }
 
     $changesPath = $changesFiles[0].FullName
