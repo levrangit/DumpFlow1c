@@ -63,13 +63,18 @@ function Get-CheckState([string]$Label,[string]$Path,[int64]$Size,[string]$Kind,
 }
 
 function Write-Status([string]$Text) {
-    # Перерисовываем одну строку через возврат каретки.
-    # Дополняем пробелами, чтобы хвост предыдущего, более длинного статуса, исчезал.
+    # Обновляем одну и ту же строку консоли без добавления новых строк.
     if ($script:StatusWidth -lt $Text.Length) {
         $script:StatusWidth = $Text.Length
     }
 
-    [Console]::Write(("`r" + $Text.PadRight($script:StatusWidth)))
+    try {
+        [Console]::SetCursorPosition(0, [Console]::CursorTop)
+        [Console]::Write($Text.PadRight($script:StatusWidth))
+    } catch {
+        # Запасной вариант для хостов, где управление позицией курсора недоступно.
+        [Console]::Write(("`r" + $Text.PadRight($script:StatusWidth)))
+    }
 }
 
 Write-Host '------------------------------------------------------------'
