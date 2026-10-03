@@ -1,4 +1,4 @@
-# DumpFlow1c: версия файла — 2026-10-03 00:27
+# DumpFlow1c: версия файла — 2026-10-03 11:18
 #Requires -Version 5.1
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -55,7 +55,7 @@ function Get-ArchiveForDatabase {
     param([string]$DatabaseName)
 
     $metadataDir = Join-Path $metadataRoot $DatabaseName
-    $changesFiles = @(Get-ChildItem -LiteralPath $metadataDir -Filter ("changes_{0}_*.json" -f $DatabaseName) -File | Sort-Object Name -Descending)
+    $changesFiles = @(Get-ChildItem -LiteralPath $metadataDir -Filter ("{0}_*_changes.json" -f $DatabaseName) -File | Sort-Object Name -Descending)
     if ($changesFiles.Count -eq 0) { throw "Не найден changes.json для $DatabaseName в $metadataDir" }
 
     Write-Step ("База {0}: найден последний changes-файл." -f $DatabaseName)
