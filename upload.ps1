@@ -28,7 +28,14 @@ $controlDestination = Join-Path $rdpMcp 'control_upload'
 New-Item -ItemType Directory -Force -Path $archiveDestination,$controlDestination | Out-Null
 
 $rclone = Join-Path (Join-Path $root 'tools') 'rclone.exe'
+$rcloneConfig = Join-Path (Join-Path $root 'tools') 'rclone.conf'
 if (-not (Test-Path -LiteralPath $rclone -PathType Leaf)) { throw "Не найден rclone.exe: $rclone" }
+
+# Используем локальный конфиг рядом с rclone, чтобы rclone не искал
+# пользовательский %APPDATA%\rclone\rclone.conf на каждом запуске.
+if (-not (Test-Path -LiteralPath $rcloneConfig -PathType Leaf)) {
+    Set-Content -LiteralPath $rcloneConfig -Value '' -Encoding ASCII
+}
 
 $metadataRoot = Join-Path (Join-Path $mcpWork 'metadata') $projectName
 $archiveRoot = Join-Path $mcpWork 'archive'
@@ -47,7 +54,7 @@ function Get-Sha256([string]$Path) {
 function Invoke-RcloneCopyTo {
     param([string]$Source,[string]$Destination)
     Write-Host "Передача: $Source -> $Destination"
-    & $rclone copyto $Source $Destination --progress --stats 5s --verbose
+    & $rclone --config $rcloneConfig copyto $Source $Destination --progress --stats 5s --verbose
     if ($LASTEXITCODE -ne 0) { throw "rclone завершился с кодом ${LASTEXITCODE}: $Source" }
 }
 
