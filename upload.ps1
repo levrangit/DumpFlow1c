@@ -1,5 +1,5 @@
-﻿$ScriptVersion = 'v1.0.3'
-$ScriptDate = '2026-10-03 13:30'
+﻿$ScriptVersion = 'v1.1.0'
+$ScriptDate = '2026-10-03 15:05'
 $ScriptName = 'upload.ps1'
 Write-Host "DumpFlow1c: $ScriptName — $ScriptVersion — $ScriptDate"
 
@@ -27,16 +27,6 @@ $archiveDestination = Join-Path $rdpMcp 'archive'
 $controlDestination = Join-Path $rdpMcp 'control_upload'
 New-Item -ItemType Directory -Force -Path $archiveDestination,$controlDestination | Out-Null
 
-$rclone = Join-Path (Join-Path $root 'tools') 'rclone.exe'
-$rcloneConfig = Join-Path (Join-Path $root 'tools') 'rclone.conf'
-if (-not (Test-Path -LiteralPath $rclone -PathType Leaf)) { throw "Не найден rclone.exe: $rclone" }
-
-# Используем локальный конфиг рядом с rclone, чтобы rclone не искал
-# пользовательский %APPDATA%\rclone\rclone.conf на каждом запуске.
-if (-not (Test-Path -LiteralPath $rcloneConfig -PathType Leaf)) {
-    Set-Content -LiteralPath $rcloneConfig -Value '' -Encoding ASCII
-}
-
 $metadataRoot = Join-Path (Join-Path $mcpWork 'metadata') $projectName
 $archiveRoot = Join-Path $mcpWork 'archive'
 
@@ -51,55 +41,40 @@ function Get-Sha256([string]$Path) {
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToUpperInvariant()
 }
 
-function Invoke-RcloneCopyTo {
+function Invoke-FileCopyTo {
     param([string]$Source,[string]$Destination)
 
-    $script:DiagNumber++
-    $number = $script:DiagNumber
+    $script:CopyNumber++
+    $number = $script:CopyNumber
+    $remaining = $script:TotalCopies - $number
     $file = Get-Item -LiteralPath $Source
     $fileSize = [int64]$file.Length
     $before = Get-Date
 
     Write-Host ''
     Write-Host '============================================================'
-    Write-Host ("DIAGNOSTICS RCLONE #{0}" -f $number)
+    Write-Host ("КОПИРОВАНИЕ {0}/{1} | осталось: {2}" -f $number, $script:TotalCopies, $remaining)
     Write-Host '============================================================'
     Write-Host ("Файл       : {0}" -f $file.Name)
     Write-Host ("Размер     : {0:N0} bytes" -f $fileSize)
-    Write-Host ("До rclone  : {0}" -f $before.ToString('HH:mm:ss.fff'))
-
-    if ($null -ne $script:DiagLastRcloneEnd) {
-        $gapMs = ($before - $script:DiagLastRcloneEnd).TotalMilliseconds
-        Write-Host ("Пауза между rclone: {0:N0} ms = {1:N3} sec = {2:N2} min" -f $gapMs, ($gapMs / 1000), ($gapMs / 60000))
-    }
-    else {
-        Write-Host 'Пауза между rclone: первый запуск'
-    }
-
+    Write-Host ("До копирования: {0}" -f $before.ToString('HH:mm:ss.fff'))
     Write-Host ("Источник  : {0}" -f $Source)
     Write-Host ("Назначение: {0}" -f $Destination)
     Write-Host ''
 
     $timer = [Diagnostics.Stopwatch]::StartNew()
-    & $rclone --config $rcloneConfig copyto $Source $Destination --progress --stats 5s --verbose
-    $exitCode = $LASTEXITCODE
+    Copy-Item -LiteralPath $Source -Destination $Destination -Force
     $timer.Stop()
 
     $after = Get-Date
-    $script:DiagLastRcloneEnd = $after
 
     Write-Host ''
     Write-Host '------------------------------------------------------------'
-    Write-Host ("После rclone : {0}" -f $after.ToString('HH:mm:ss.fff'))
-    Write-Host ("Время rclone : {0:N0} ms = {1:N3} sec" -f $timer.ElapsedMilliseconds, $timer.Elapsed.TotalSeconds)
-    Write-Host ("Exit code    : {0}" -f $exitCode)
+    Write-Host ("После копирования: {0}" -f $after.ToString('HH:mm:ss.fff'))
+    Write-Host ("Время копирования: {0:N0} ms = {1:N3} sec" -f $timer.ElapsedMilliseconds, $timer.Elapsed.TotalSeconds)
+    Write-Host ("Осталось файлов : {0}" -f $remaining)
     Write-Host '------------------------------------------------------------'
-
-    if ($exitCode -ne 0) { throw "rclone завершился с кодом ${exitCode}: $Source" }
 }
-
-$script:DiagLastRcloneEnd = $null
-$script:DiagNumber = 0
 
 $dbDir = Join-Path (Join-Path $configDir 'databases') $computer
 $dbFiles = @(Get-ChildItem -LiteralPath $dbDir -Filter '*.json' -File | Sort-Object Name)
@@ -198,9 +173,11 @@ Write-Host ("Баз: {0:N0}" -f $transfers.Count)
 Write-Host ''
 
 # Передаём ровно тот комплект, который описан control_upload.json.
+$script:TotalCopies = $transfers.Count * 4
+Write-Host ("Всего файлов к копированию: {0}" -f $script:TotalCopies)
 $uploadTimer = [Diagnostics.Stopwatch]::StartNew()
 foreach ($item in $transfers) {
-    Invoke-RcloneCopyTo $item.LocalArchivePath (Join-Path $archiveDestination $item.Archive.Name)
+    Invoke-FileCopyTo $item.LocalArchivePath (Join-Path $archiveDestination $item.Archive.Name)
     Invoke-RcloneCopyTo $item.LocalShaPath (Join-Path $archiveDestination $item.ArchiveChecksum.Name)
     Invoke-RcloneCopyTo $item.LocalManifestPath (Join-Path $archiveDestination $item.Manifest.Name)
     Invoke-RcloneCopyTo $item.LocalChangesPath (Join-Path $archiveDestination $item.Changes.Name)
