@@ -24,6 +24,39 @@ function Write-Log {
     Add-Content -LiteralPath $LogPath -Value $line -Encoding UTF8
 }
 
+function Write-ControlLog {
+    param([string]$Message,[string]$LogPath)
+    $line = "[{0}] {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message
+    Add-Content -LiteralPath $LogPath -Value $line -Encoding UTF8
+
+    if ($null -eq $script:ControlRows) {
+        $script:ControlRows = @('', '')
+        $script:ControlRowTop = [Console]::CursorTop
+    }
+
+    $script:ControlRows[0] = $script:ControlRows[1]
+    $script:ControlRows[1] = $line
+
+    try {
+        $width = [Console]::WindowWidth - 1
+        if ($width -lt 20) { $width = 120 }
+
+        [Console]::SetCursorPosition(0, $script:ControlRowTop)
+        foreach ($row in $script:ControlRows) {
+            $text = $row
+            if ($text.Length -gt $width) {
+                $text = $text.Substring(0, $width - 3) + '...'
+            }
+            [Console]::Write($text.PadRight($width))
+            [Console]::WriteLine()
+        }
+        [Console]::SetCursorPosition(0, $script:ControlRowTop + 2)
+    }
+    catch {
+        # Если stdout не является интерактивной консолью, достаточно записи в лог.
+    }
+}
+
 function Get-DumpStatistics {
     param([string]$Path)
     if (-not (Test-Path -LiteralPath $Path -PathType Container)) {
