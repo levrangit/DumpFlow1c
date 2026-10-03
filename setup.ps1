@@ -3,7 +3,7 @@ $ScriptDate = '2026-10-03 00:53'
 $ScriptName = 'setup.ps1'
 Write-Host "DumpFlow1c: $ScriptName — $ScriptVersion — $ScriptDate"
 
-# DumpFlow1c: v1.0.1 — 2026-10-03 06:43
+# DumpFlow1c: v1.0.2 — 2026-10-03 00:53
 #requires -Version 5.1
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $ErrorActionPreference = 'Stop'
