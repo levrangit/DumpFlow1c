@@ -3,7 +3,6 @@ $ScriptDate = '2026-10-03 00:53'
 $ScriptName = 'control_upload.ps1'
 Write-Host "DumpFlow1c: $ScriptName — $ScriptVersion — $ScriptDate"
 
-# DumpFlow1c: v1.0.2 — 2026-10-03 00:53
 #Requires -Version 5.1
 [CmdletBinding()]
 param(
