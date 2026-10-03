@@ -98,7 +98,10 @@ function Invoke-RcloneCopyTo {
     if ($exitCode -ne 0) { throw "rclone завершился с кодом ${exitCode}: $Source" }
 }
 
-$script:DiagLastRcloneEnd = $null`r`n$script:DiagNumber = 0`r`n`r`n$dbDir = Join-Path (Join-Path $configDir 'databases') $computer
+$script:DiagLastRcloneEnd = $null
+$script:DiagNumber = 0
+
+$dbDir = Join-Path (Join-Path $configDir 'databases') $computer
 $dbFiles = @(Get-ChildItem -LiteralPath $dbDir -Filter '*.json' -File | Sort-Object Name)
 if ($dbFiles.Count -eq 0) { throw "В каталоге нет JSON баз: $dbDir" }
 
