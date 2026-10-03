@@ -1,14 +1,14 @@
-﻿$ScriptVersion = 'v1.0.2'
-$ScriptDate = '2026-10-03 00:53'
-$ScriptName = 'compare_manifests.ps1'
-Write-Host "DumpFlow1c: $ScriptName — $ScriptVersion — $ScriptDate"
-
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $false)]
     [string]$DatabaseName
 )
+
+$ScriptVersion = 'v1.0.3'
+$ScriptDate = '2026-10-03 00:53'
+$ScriptName = 'compare_manifests.ps1'
+Write-Host "DumpFlow1c: $ScriptName — $ScriptVersion — $ScriptDate"
 
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
