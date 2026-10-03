@@ -148,8 +148,8 @@ state.json хранит только указатель на последнюю 
     "Project": "AKK",
     "Database": "DO_AKK",
     "LastSuccessfulSnapshotId": "20260930_180000",
-    "LastSuccessfulManifest": "manifest_DO_AKK_20260930_180000.json",
-    "LastSuccessfulChanges": "changes_DO_AKK_20260930_180000.json",
+    "LastSuccessfulManifest": "DO_AKK_20260930_180000_manifest.json",
+    "LastSuccessfulChanges": "DO_AKK_20260930_180000_changes.json",
     "LastSuccessfulAt": "2026-09-30T18:02:41+05:00"
 }
 ~~~
