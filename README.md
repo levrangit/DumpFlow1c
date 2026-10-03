@@ -1,4 +1,6 @@
 # DumpFlow1c
+# DumpFlow1c: v1.0.1 — 2026-10-03 06:43
+
 
 PowerShell-пайплайн передачи dump конфигураций 1С с Windows-терминала на RDP-клиент.
 
