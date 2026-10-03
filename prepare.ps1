@@ -1,4 +1,9 @@
-﻿# DumpFlow1c: v1.0.1 — 2026-10-03 06:43
+﻿$ScriptVersion = 'v1.0.2'
+$ScriptDate = '2026-10-03 00:53'
+$ScriptName = 'prepare.ps1'
+Write-Host "DumpFlow1c: $ScriptName — $ScriptVersion — $ScriptDate"
+
+# DumpFlow1c: v1.0.1 — 2026-10-03 06:43
 #Requires -Version 5.1
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
