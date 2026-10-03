@@ -8,8 +8,8 @@ DumpFlow1c формирует на Windows-терминале постоянны
 
 - .7z;
 - .7z.sha256;
-- manifest_*.json;
-- changes_*.json.
+- <DB>_<snapshot>_manifest.json;
+- <DB>_<snapshot>_changes.json.
 
 Этап RDP-клиент → Ubuntu/leoVM в эту схему пока не входит.
 
@@ -83,8 +83,8 @@ dump/<PROJECT>/<DB>/extensions/<EXTENSION>/
 
 ~~~
 metadata/<PROJECT>/<DB>/
-├── manifest_<DB>_<snapshot>.json
-├── changes_<DB>_<snapshot>.json
+├── <DB>_<snapshot>_manifest.json
+├── <DB>_<snapshot>_changes.json
 └── state.json
 ~~~
 
@@ -92,7 +92,7 @@ metadata/<PROJECT>/<DB>/
 
 ## Manifest
 
-manifest_<DB>_<snapshot>.json — полный снимок текущего dump.
+<DB>_<snapshot>_manifest.json — полный снимок текущего dump.
 
 В Files используется только RelativePath. Абсолютные Windows-пути в manifest не записываются.
 
@@ -118,7 +118,7 @@ manifest_<DB>_<snapshot>.json — полный снимок текущего dum
 
 ## Changes
 
-changes_<DB>_<snapshot>.json — delta между текущим manifest и последним успешно доставленным manifest.
+<DB>_<snapshot>_changes.json — delta между текущим manifest и последним успешно доставленным manifest.
 
 Возможные действия:
 
@@ -158,7 +158,7 @@ state.json обновляется только после проверки фа�
 
 ## Архив
 
-pack.ps1 читает последний changes_*.json каждой базы.
+pack.ps1 читает последний <DB>_*_changes.json каждой базы.
 
 Для ADDED и MODIFIED создаётся временный список относительных путей, после чего portable 7za.exe создаёт:
 
@@ -197,8 +197,8 @@ upload.ps1 передаёт ровно четыре файла на каждую
 ~~~
 <DB>_<snapshot>.7z
 <DB>_<snapshot>.7z.sha256
-manifest_<DB>_<snapshot>.json
-changes_<DB>_<snapshot>.json
+<DB>_<snapshot>_manifest.json
+<DB>_<snapshot>_changes.json
 ~~~
 
 Передача выполняется через rclone copyto.
